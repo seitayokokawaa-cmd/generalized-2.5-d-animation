@@ -117,6 +117,19 @@ class SceneLinks:
                     if m.t1 == math.inf and m.t0 < d.t:
                         m.t1 = d.t
 
+        # riders continue from where their mount ends, not their old spot
+        for char_id, mounts in self.mounts.items():
+            ent = entities.get(char_id)
+            for m in mounts:
+                if m.t1 == math.inf or ent is None or ent.program is None:
+                    continue
+                obj = entities.get(m.obj_id)
+                if obj is None or obj.program is None:
+                    continue
+                ox, _oy = obj.program.position(m.t1)
+                if hasattr(ent.program, "insert_teleport"):
+                    ent.program.insert_teleport(m.t1, (ox + m.offset[0], 0.0))
+
     def _end_open_hold(self, obj_id: str, t: float) -> None:
         for h in self.holds.get(obj_id, []):
             if h.t1 == math.inf and h.t0 < t:

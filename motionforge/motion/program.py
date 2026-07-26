@@ -209,6 +209,11 @@ class CharProgram:
             t += float(rng.uniform(2.2, 4.8))
         self.idle_phase = float(seed_rng.stream(f"idle:{placement.id}").uniform(0, 6.28))
 
+    def insert_teleport(self, t: float, pos: Tuple[float, float]) -> None:
+        """Continue from `pos` after time t (used by dismounts, ragdolls)."""
+        self.segments.append(LocoSegment(t, t, "teleport", pos, pos))
+        self.segments.sort(key=lambda s: s.t0)
+
     # ------------------------------------------------------------- position
 
     def _segment_at(self, t: float) -> Tuple[Optional[LocoSegment], Tuple[float, float]]:

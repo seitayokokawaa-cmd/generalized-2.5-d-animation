@@ -46,27 +46,27 @@ Full design: [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Milestones
 
 - [x] **M0 — Plan & scaffold**: this plan, architecture doc, package skeleton, tooling config
-- [ ] **M1 — Core kernel**: vec/transform/color math, easing curves, seeded RNG, YAML parser
+- [x] **M1 — Core kernel**: vec/transform/color math, easing curves, seeded RNG, YAML parser
       with line-number tracking, schema types, plain-language error framework
-- [ ] **M2 — Renderer**: cairo backend, scene graph, depth planes with true parallax, camera
+- [x] **M2 — Renderer**: cairo backend, scene graph, depth planes with true parallax, camera
       (pan/zoom/follow), `motionforge frame` PNG previews
-- [ ] **M3 — Text engine**: harfbuzz shaping, font resolver, titles/subtitles/lower-thirds in
+- [x] **M3 — Text engine**: harfbuzz shaping, font resolver, titles/subtitles/lower-thirds in
       any script (Bengali, Arabic, Chinese verified)
-- [ ] **M4 — Asset system**: declarative part-based objects (shapes, pivots, articulated
+- [x] **M4 — Asset system**: declarative part-based objects (shapes, pivots, articulated
       parts), built-in library, user-defined objects, reuse/resize/recolor/flip at any depth
-- [ ] **M5 — Characters**: skeleton rigs, analytic 2-bone IK, template bodies (human,
+- [x] **M5 — Characters**: skeleton rigs, analytic 2-bone IK, template bodies (human,
       quadruped, bird, fish, blob) with proportion-safe scaling, faces (blink, gaze, brows,
       lip-sync visemes)
-- [ ] **M6 — Motion**: foot-locked gait engine (walk/run/sneak/jump/climb/swim/fly),
+- [x] **M6 — Motion**: foot-locked gait engine (walk/run/sneak/jump/climb/swim/fly),
       keyframed action library (wave, sit, dance, hug, fight, mourn, …), body-mask blending,
       frame-by-frame custom pose tracks
-- [ ] **M7 — Interaction & physics**: pick up / carry / hand-off / throw / catch, ride, sit,
+- [x] **M7 — Interaction & physics**: pick up / carry / hand-off / throw / catch, ride, sit,
       door hinges & wheels, deterministic verlet ragdoll with recovery
-- [ ] **M8 — Cinematography FX**: fades/dissolves, rain/snow/fog, skies with sun/moon/clouds,
+- [x] **M8 — Cinematography FX**: fades/dissolves, rain/snow/fog, skies with sun/moon/clouds,
       day/night grading
-- [ ] **M9 — Audio & encode**: procedural music moods, SFX (footsteps auto-synced to gait),
+- [x] **M9 — Audio & encode**: procedural music moods, SFX (footsteps auto-synced to gait),
       WAV mix, parallel frame rendering, bit-exact MP4 encode
-- [ ] **M10 — AI authorship**: deep validator with fixable plain-language errors,
+- [x] **M10 — AI authorship**: deep validator with fixable plain-language errors,
       `motionforge spec` (always-current language doc generated from code),
       `motionforge auto` (LLM write→check→fix→render loop)
 - [ ] **M11 — Ship**: example screenplays, pytest suite (determinism, foot-lock invariant,
