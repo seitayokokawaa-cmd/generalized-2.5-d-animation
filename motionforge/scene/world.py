@@ -156,4 +156,7 @@ class World:
         for ent in order:
             view = view_matrix(cam, ent.depth, self.width, self.height)
             flatten(ent.node(t), view, 1.0, shapes)
+        from ..fx.captions import render_captions
+        shapes.extend(render_captions(cs.scene.captions, t, self.width,
+                                      self.height, self.production.palette))
         return shapes
