@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core import color as colors
 from ..core.rng import MFRandom
-from ..core.transform import chain, scaling, translation
+from ..core.transform import about, chain, rotation, scaling, translation
 from ..draw.canvas import (Gradient, Shape, path_capsule, path_circle,
                            path_rect)
 from ..dsl.ir import Placement, Production, Scene
@@ -55,18 +55,34 @@ class Entity:
             return self.program.position(t)
         return self.placement.at
 
-    def node(self, t: float, resolve_pos=None) -> Node:
+    def visual_node(self, t: float) -> Node:
+        """The entity's untransformed visuals (object body or placeholder)."""
+        p = self.placement
+        if self.obj_type is not None:
+            part_state = self.program.part_state(t) if self.program else {}
+            n = self.obj_type.node(part_state, p.tint, self.palette)
+            if self.program:
+                n.opacity = self.program.opacity_at(t)
+            return n
+        n = Node(name=p.id)
+        col = colors.parse(p.tint, self.palette) if p.tint else (0.5, 0.45, 0.4, 1.0)
+        n.add(Shape(path=path_rect(-0.5, 0.0, 1.0, 1.0), fill=col))
+        return n
+
+    def node(self, t: float, resolve_pos=None,
+             pos_override: Optional[Tuple[float, float]] = None) -> Node:
         p = self.placement
         if p.kind == "char" and self.rig is not None and self.program is not None:
             st = self.program.state(t, resolve_pos)
+            pos = pos_override if pos_override is not None else st.pos
             flip = st.facing < 0
             n = Node(transform=chain(
-                translation(st.pos[0], st.pos[1]),
+                translation(pos[0], pos[1]),
                 scaling(-p.scale if flip else p.scale, p.scale),
             ), name=p.id)
             n.children.append(self.rig.node(st.pose))
             return n
-        x, y = self.position(t)
+        x, y = pos_override if pos_override is not None else self.position(t)
         n = Node(transform=chain(
             translation(x, y),
             scaling(-p.scale if p.flip or p.facing == "left" else p.scale, p.scale),
@@ -75,13 +91,8 @@ class Entity:
             body = (0.35, 0.35, 0.4, 1.0)
             n.add(Shape(path=path_capsule(0, 0.45, 0, 1.25, 0.22), fill=body))
             n.add(Shape(path=path_circle(0, 1.55, 0.16), fill=body))
-        elif self.obj_type is not None:
-            part_state = self.program.part_state(t) if self.program else {}
-            n.opacity = self.program.opacity_at(t) if self.program else 1.0
-            n.children.append(self.obj_type.node(part_state, p.tint, self.palette))
         else:
-            col = colors.parse(p.tint, self.palette) if p.tint else (0.5, 0.45, 0.4, 1.0)
-            n.add(Shape(path=path_rect(-0.5, 0.0, 1.0, 1.0), fill=col))
+            n.children.append(self.visual_node(t))
         return n
 
 
@@ -90,12 +101,32 @@ class CompiledScene:
     scene: Scene
     camera: CameraTrack
     entities: List[Entity] = field(default_factory=list)
+    links: Optional[Any] = None          # motion.attach.SceneLinks
 
     def entity(self, eid: str) -> Optional[Entity]:
         for e in self.entities:
             if e.id == eid:
                 return e
         return None
+
+    def entity_position(self, eid: str, t: float) -> Optional[Tuple[float, float]]:
+        ent = self.entity(eid)
+        if ent is None:
+            return None
+        if self.links is not None:
+            m = self.links.mount_of(eid, t)
+            if m is not None:
+                base = self.entity_position(m.obj_id, t)
+                if base is not None:
+                    return (base[0] + m.offset[0], base[1] + m.offset[1])
+            fl = self.links.flight_pos(eid, t)
+            if fl is not None:
+                return (fl[0], fl[1])
+            h = self.links.held_by(eid, t)
+            if h is not None:
+                pos, _ang, _f = self.links._hand(h.char_id, h.hand, t)
+                return pos
+        return ent.position(t)
 
 
 class World:
@@ -131,6 +162,8 @@ class World:
                 cs.entities.append(Entity(placement=p, palette=production.palette,
                                           obj_type=obj_type, rig=rig,
                                           program=program))
+            from ..motion.attach import SceneLinks
+            cs.links = SceneLinks({e.id: e for e in cs.entities})
             self.scenes.append(cs)
 
     # ------------------------------------------------------------ per frame
@@ -147,9 +180,8 @@ class World:
         follow_pos = None
         if cs.camera.follow is not None:
             target = cs.camera.follow.get("char") or cs.camera.follow.get("obj")
-            ent = cs.entity(str(target)) if target else None
-            if ent is not None:
-                follow_pos = ent.position(t)
+            if target:
+                follow_pos = cs.entity_position(str(target), t)
         return cs.camera.state(t, follow_pos)
 
     def background_shapes(self, cs: CompiledScene, cam: CamState,
@@ -195,10 +227,56 @@ class World:
             e = cs.entity(eid)
             return e.position(tt) if e is not None else None
 
+        links = cs.links
+        held_map: Dict[str, Any] = {}
+        for ent in cs.entities:
+            if ent.placement.kind == "obj" and links is not None:
+                h = links.held_by(ent.id, t)
+                if h is not None and cs.entity(h.char_id) is not None:
+                    held_map[ent.id] = h
+
         order = sorted(cs.entities, key=lambda e: (-e.depth, e.placement.layer))
         for ent in order:
+            if ent.id in held_map:
+                continue                     # drawn right after its carrier
             view = view_matrix(cam, ent.depth, self.width, self.height)
-            flatten(ent.node(t, resolve_pos), view, 1.0, shapes)
+            pos_override = None
+            if links is not None:
+                if ent.placement.kind == "char":
+                    m = links.mount_of(ent.id, t)
+                    if m is not None:
+                        pos_override = cs.entity_position(ent.id, t)
+                else:
+                    fl = links.flight_pos(ent.id, t)
+                    if fl is not None:
+                        x, y, spin = fl
+                        size = ent.obj_type.size if ent.obj_type else (0.5, 0.5)
+                        sc = ent.placement.scale
+                        m_fly = chain(translation(x, y),
+                                      about((0.0, size[1] * 0.5 * sc),
+                                            rotation(spin)),
+                                      scaling(sc, sc))
+                        node = Node(transform=m_fly)
+                        node.children.append(ent.visual_node(t))
+                        flatten(node, view, 1.0, shapes)
+                        continue
+            flatten(ent.node(t, resolve_pos, pos_override), view, 1.0, shapes)
+            # carried objects render just above their carrier, same depth
+            if links is not None and ent.placement.kind == "char":
+                for obj_id, h in held_map.items():
+                    if h.char_id != ent.id:
+                        continue
+                    obj = cs.entity(obj_id)
+                    if obj is None:
+                        continue
+                    (hx, hy), hang, facing = links._hand(ent.id, h.hand, t)
+                    sc = obj.placement.scale
+                    m_held = chain(translation(hx, hy),
+                                   scaling(sc * (1 if facing >= 0 else -1), sc),
+                                   translation(-h.grip[0], -h.grip[1]))
+                    node = Node(transform=m_held)
+                    node.children.append(obj.visual_node(t))
+                    flatten(node, view, 1.0, shapes)
 
         from ..fx.captions import render_captions
         shapes.extend(render_captions(cs.scene.captions, t, self.width,

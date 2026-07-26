@@ -197,6 +197,9 @@ def parse_direction(node: Any, where: str, report: Report, idx: int) -> Optional
     until = cur.num("until", None, lo=0.0)
 
     subjects = [k for k in _SUBJECT_KEYS if cur.has(k)]
+    # char + obj together is an interaction: char is the subject, obj a parameter
+    if "char" in subjects and subjects == ["char", "obj"]:
+        subjects = ["char"]
     if len(subjects) != 1:
         if not subjects:
             cur.err("E122", "this direction has no subject",
@@ -253,7 +256,10 @@ def parse_direction(node: Any, where: str, report: Report, idx: int) -> Optional
     verb = verbs[0]
     vval = cur.raw(verb)
 
-    params = _params_from(node, _COMMON_KEYS + _SUBJECT_KEYS + (verb,))
+    consumed = _COMMON_KEYS + (subject_key, verb)
+    if subject_key != "char":
+        consumed = consumed + tuple(k for k in _SUBJECT_KEYS if k != subject_key)
+    params = _params_from(node, consumed)
     if verb == "do":
         # {char: a, do: walk, to: ...} -> verb=walk, params carry the rest
         if not isinstance(vval, str):

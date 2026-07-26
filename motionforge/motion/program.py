@@ -51,11 +51,12 @@ class LocoSegment:
 
     @property
     def total(self) -> float:
-        return abs(self.p1[0] - self.p0[0])
+        return math.hypot(self.p1[0] - self.p0[0], self.p1[1] - self.p0[1])
 
     @property
     def dir(self) -> float:
-        return 1.0 if self.p1[0] >= self.p0[0] else -1.0
+        dx = self.p1[0] - self.p0[0]
+        return 1.0 if dx >= 0 else -1.0
 
 
 @dataclass
@@ -105,7 +106,8 @@ class CharProgram:
         self.looks: List[Tuple[float, float, Any]] = []
         self.pose_tracks: List[Tuple[float, list]] = []
         self.facing_changes: List[Tuple[float, float]] = []
-        self.ragdolls: List[Direction] = []   # handled by physics layer (M7)
+        self.ragdolls: List[Direction] = []
+        self.attach_cmds: List[Direction] = []   # consumed by attach.SceneLinks
 
         base_facing = -1.0 if placement.facing == "left" else 1.0
         self.facing_changes.append((-1e9, base_facing))
@@ -122,7 +124,7 @@ class CharProgram:
                 seg = LocoSegment(t0=d.t, t1=t1, mode=d.verb,
                                   p0=pos, p1=(float(to[0]), float(to[1])))
                 self.segments.append(seg)
-                if seg.total > 1e-6:
+                if abs(seg.p1[0] - seg.p0[0]) > 1e-6:
                     self.facing_changes.append((d.t, seg.dir))
                 pos = seg.p1
                 cursor = t1
@@ -157,8 +159,47 @@ class CharProgram:
                     self.pose_tracks.append((d.t, keys))
             elif d.verb == "ragdoll":
                 self.ragdolls.append(d)
+            elif d.verb in ("pickup", "drop", "give", "throw", "catch",
+                            "ride", "sit_on", "mount", "dismount", "stand"):
+                self.attach_cmds.append(d)
+                if d.verb == "pickup":
+                    self.actions.append(ActionInstance(
+                        d.t, d.t + 0.9, ACTIONS["reach_down"], dict(d.params)))
+                elif d.verb in ("give", "catch"):
+                    self.actions.append(ActionInstance(
+                        d.t, d.until or d.t + 1.0, ACTIONS["reach_forward"],
+                        dict(d.params)))
+                elif d.verb == "throw":
+                    self.actions.append(ActionInstance(
+                        d.t, d.t + 0.7, ACTIONS["windup_throw"], dict(d.params)))
+                elif d.verb in ("ride", "sit_on", "mount"):
+                    t1 = d.until if d.until is not None else scene.duration
+                    self.actions.append(ActionInstance(
+                        d.t, t1, ACTIONS["sit"], dict(d.params, seat=0.1)))
+
+        # carry poses between pickup and release; truncate ride-sits at dismount
+        for d in self.attach_cmds:
+            if d.verb == "pickup":
+                obj = d.params.get("obj")
+                t_rel = scene.duration
+                for d2 in self.attach_cmds:
+                    if (d2.t > d.t and d2.verb in ("drop", "give", "throw")
+                            and d2.params.get("obj") == obj):
+                        t_rel = d2.t + 0.35
+                        break
+                if t_rel > d.t + 0.9:
+                    self.actions.append(ActionInstance(
+                        d.t + 0.85, t_rel, ACTIONS["hold_item"], dict(d.params)))
+            elif d.verb in ("dismount", "stand"):
+                for inst in self.actions:
+                    if (inst.adef.name == "sit" and inst.t0 < d.t
+                            and inst.t1 > d.t):
+                        inst.t1 = d.t
+        self.actions.sort(key=lambda a: a.t0)
 
         self.facing_changes.sort(key=lambda x: x[0])
+        self._ragdoll_sims: Optional[List[Any]] = None
+        self._capturing = False
         # deterministic blink schedule for the whole scene
         rng = seed_rng.stream(f"blink:{placement.id}")
         self.blinks: List[float] = []
@@ -221,8 +262,33 @@ class CharProgram:
             pos = self.position(t)
             return LocoState(pos=pos, facing=facing, pose=pose, phase=0.0)
         dur = seg.t1 - seg.t0
-        u = ease_travel(clamp((t - seg.t0) / dur, 0.0, 1.0))
+        u_raw = clamp((t - seg.t0) / dur, 0.0, 1.0)
+        u = ease_travel(u_raw)
         dist = seg.total * u
+
+        if seg.mode == "jump":
+            from .gait_special import jump_pose
+            st = jump_pose(self.rig, u_raw, seg.p0, seg.p1, dur, seg.dir,
+                           float(0.0))
+            st.pos = (seg.p0[0] + st.pos[0], seg.p0[1] + st.pos[1])
+            st.facing = seg.dir
+            return st
+        if seg.mode == "climb":
+            from .gait_special import climb_pose
+            climb_dist = (seg.p1[1] - seg.p0[1]) * u
+            st = climb_pose(self.rig, abs(climb_dist), abs(seg.p1[1] - seg.p0[1]),
+                            seg.dir)
+            st.pos = (lerp(seg.p0[0], seg.p1[0], u), lerp(seg.p0[1], seg.p1[1], u))
+            st.facing = seg.dir
+            return st
+        if seg.mode in ("swim", "fly"):
+            from .gait_special import fly_pose, swim_pose
+            fn = swim_pose if seg.mode == "swim" else fly_pose
+            st = fn(self.rig, dist, seg.total, t - seg.t0, seg.dir)
+            st.pos = (seg.p0[0] + dist * seg.dir, lerp(seg.p0[1], seg.p1[1], u))
+            st.facing = seg.dir
+            return st
+
         mode = seg.mode if seg.mode in GAITS else "walk"
         if self.is_quad:
             st = quadruped_pose(self.rig, mode, dist, seg.total, t - seg.t0, dur, seg.dir)
@@ -358,9 +424,67 @@ class CharProgram:
             v1 = float(m1.get(m, v0))
             pose.morphs[m] = lerp(v0, v1, k)
 
+    # --------------------------------------------------------------- ragdoll
+
+    def _ensure_ragdolls(self) -> List[Any]:
+        if self._ragdoll_sims is not None:
+            return self._ragdoll_sims
+        from .ragdoll import RagdollSim
+        self._ragdoll_sims = []
+        self._capturing = True
+        try:
+            for d in self.ragdolls:
+                t0 = d.t
+                t1 = d.until if d.until is not None else t0 + 1.6
+                recover = float(d.params.get("recover", 0.6))
+                imp = d.params.get("impulse", [0.0, 0.0])
+                if not (isinstance(imp, (list, tuple)) and len(imp) == 2):
+                    imp = [0.0, 0.0]
+                dt_prev = 1.0 / 60.0
+                cur = self.state(max(t0 - 1e-3, 0.0))
+                prev = self.state(max(t0 - 1e-3 - dt_prev, 0.0))
+                sim = RagdollSim(self.rig, t0, t1, recover,
+                                 (float(imp[0]), float(imp[1])),
+                                 cur.pose, cur.pos, cur.facing,
+                                 prev.pose, prev.pos, dt_prev)
+                self._ragdoll_sims.append(sim)
+                # the character continues from wherever it came to rest
+                pelvis = sim.frames[-1][sim.names.index("pelvis")]
+                wx = sim.origin[0] + pelvis[0] * sim.facing
+                self.segments.append(LocoSegment(t1, t1, "teleport",
+                                                 (wx, 0.0), (wx, 0.0)))
+                self.segments.sort(key=lambda s: s.t0)
+        finally:
+            self._capturing = False
+        return self._ragdoll_sims
+
     # ----------------------------------------------------------- the sample
 
     def state(self, t: float, resolve_pos=None) -> LocoState:
+        if not self._capturing and self.ragdolls:
+            from ..chars.rig import blend as pose_blend
+            for sim in self._ensure_ragdolls():
+                if sim.t0 <= t <= sim.t1:
+                    pose, pos = sim.pose_at(t)
+                    return LocoState(pos=pos, facing=sim.facing, pose=pose,
+                                     phase=0.0)
+                if sim.t1 < t <= sim.t1 + sim.recover:
+                    u = (t - sim.t1) / sim.recover
+                    u = u * u * (3 - 2 * u)
+                    self._capturing = True
+                    try:
+                        base = self.state(t, resolve_pos)
+                    finally:
+                        self._capturing = False
+                    # ragdoll pose is relative to the frozen origin; express
+                    # the base pose there too, then blend
+                    dx = (base.pos[0] - sim.origin[0]) * sim.facing
+                    dy = base.pos[1] - sim.origin[1]
+                    shifted = base.pose.copy()
+                    shifted.root = (shifted.root[0] + dx, shifted.root[1] + dy)
+                    mixed = pose_blend(sim.final_pose, shifted, u)
+                    return LocoState(pos=sim.origin, facing=sim.facing,
+                                     pose=mixed, phase=base.phase)
         st = self._loco_state(t)
         pose = st.pose
         root_extra = [0.0, 0.0, 0.0]

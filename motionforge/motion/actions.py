@@ -383,3 +383,45 @@ def act_handshake(u, p, rig):
     s = _side(p)
     w = _osc(u, 2.0) * 6.0
     return ({f"uarm_{s}": 70.0 + w * 0.5, f"farm_{s}": 20.0 + w}, {}, ZERO)
+
+
+# --------------------------------------------------- interaction companions
+
+@action("reach_down", 0.9, False, "full", "bend and reach toward the ground",
+        {"hand": "near|far"})
+def act_reach_down(u, p, rig):
+    k = math.sin(min(u, 1.0) * math.pi)     # down and back up
+    s = _side(p)
+    return ({f"uarm_{s}": -35.0 * k, f"farm_{s}": 5.0,
+             "spine": -38.0 * k, "chest": -10.0 * k, "head": 12.0 * k,
+             "thigh_near": 28.0 * k, "shin_near": -42.0 * k,
+             "thigh_far": 22.0 * k, "shin_far": -38.0 * k},
+            {"gaze_y": -0.7 * k}, (0.0, -rig.height * 0.06 * k, 0.0))
+
+
+@action("reach_forward", 1.0, False, "arm", "extend a hand forward (give/catch)",
+        {"hand": "near|far"})
+def act_reach_forward(u, p, rig):
+    k = _rise(u, 0.3)
+    s = _side(p)
+    return ({f"uarm_{s}": 75.0 * k, f"farm_{s}": 8.0 * k}, {}, ZERO)
+
+
+@action("windup_throw", 0.7, False, "upper", "wind up and hurl", {"hand": "near|far"})
+def act_windup_throw(u, p, rig):
+    s = _side(p)
+    if u < 0.5:                              # windup back
+        k = u / 0.5
+        return ({f"uarm_{s}": (140.0 + 30.0 * k), f"farm_{s}": 60.0 * k,
+                 "spine": 8.0 * k, "chest": 4.0 * k}, {}, ZERO)
+    k = (u - 0.5) / 0.5                      # release forward
+    return ({f"uarm_{s}": 170.0 - 95.0 * k, f"farm_{s}": 60.0 - 55.0 * k,
+             "spine": 8.0 - 22.0 * k, "chest": 4.0 - 8.0 * k},
+            {}, ZERO)
+
+
+@action("hold_item", 1.0, True, "arm", "carry something at the side",
+        {"hand": "near|far"})
+def act_hold_item(u, p, rig):
+    s = _side(p)
+    return ({f"uarm_{s}": 14.0, f"farm_{s}": 22.0}, {}, ZERO)
