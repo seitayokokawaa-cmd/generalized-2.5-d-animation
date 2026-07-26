@@ -116,6 +116,23 @@ def path_capsule(x0: float, y0: float, x1: float, y1: float, r: float) -> List[S
     ]
 
 
+def path_taper(x0: float, y0: float, x1: float, y1: float,
+               r0: float, r1: float) -> List[Seg]:
+    """Capsule with different end radii (limbs that taper toward the tip)."""
+    dx, dy = x1 - x0, y1 - y0
+    ang = math.atan2(dy, dx)
+    a90 = ang + math.pi / 2
+    p0x, p0y = math.cos(a90) * r0, math.sin(a90) * r0
+    p1x, p1y = math.cos(a90) * r1, math.sin(a90) * r1
+    return [
+        ("M", x0 + p0x, y0 + p0y),
+        ("A", x0, y0, r0, a90, a90 + math.pi),
+        ("L", x1 - p1x, y1 - p1y),
+        ("A", x1, y1, r1, a90 + math.pi, a90 + 2 * math.pi),
+        ("Z",),
+    ]
+
+
 def path_line(points: Sequence[Tuple[float, float]], close: bool = False) -> List[Seg]:
     if not points:
         return []
