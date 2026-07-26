@@ -36,6 +36,12 @@ def parse(value, palette: Optional[Dict[str, str]] = None) -> RGBA:
     s = value.strip()
     if palette and s in palette:
         s = palette[s]
+        if isinstance(s, (list, tuple)):
+            return parse(s)
+        if not isinstance(s, str):
+            raise ValueError(
+                f"palette entry '{value}' is {s!r} — palette values must be "
+                "color strings like \"#a33b2a\" (quote hex values in YAML)")
     if s in NAMED:
         s = NAMED[s]
     if not s.startswith("#"):

@@ -71,7 +71,10 @@ def render_video(production: Production, out_path: str, workers: int = 0,
                     if not quiet and i % fps == 0:
                         print(f"  {i // fps}s / {duration:.1f}s", file=sys.stderr)
             else:
-                ctx = mp.get_context("fork")
+                try:
+                    ctx = mp.get_context("fork")
+                except ValueError:      # Windows/macOS-spawn platforms
+                    ctx = mp.get_context("spawn")
                 with ctx.Pool(workers, initializer=_init_worker,
                               initargs=(production,)) as pool:
                     args = ((i, fps) for i in range(n_frames))

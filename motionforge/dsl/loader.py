@@ -32,6 +32,11 @@ def _construct_yaml_map(loader: _Loader, node):
     seen = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=False)
+        if isinstance(key, (MarkedDict, MarkedList)):
+            raise yaml.MarkedYAMLError(
+                problem="mappings and lists cannot be used as keys",
+                problem_mark=key_node.start_mark,
+            )
         if key in seen:
             raise yaml.MarkedYAMLError(
                 problem=f"duplicate key '{key}' (first used on line {seen[key]})",

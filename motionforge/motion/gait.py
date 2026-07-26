@@ -139,6 +139,14 @@ def biped_pose(rig: CharacterRig, mode: str, dist: float, total: float,
         n_steps = max(1, round(total / step))
         step = total / n_steps
     phi = dist / step if step > 1e-9 else 0.0
+    # catch-up: overdrive the phase by one step across the final quarter so
+    # the trailing foot closes up to the destination instead of stopping a
+    # full stride behind (plants are clamped, so the lead foot stays put)
+    if total > 1e-6:
+        u_raw = dist / total
+        if u_raw > 0.75:
+            c = (u_raw - 0.75) / 0.25
+            phi += c * c * (3 - 2 * c)
     duty = g["duty"]
     speed_norm = clamp((total / max(duration, 1e-6)) / (g["max_speed"] * rig.height + 1e-6) + 0.35, 0.4, 1.0)
 
@@ -193,6 +201,11 @@ def quadruped_pose(rig: CharacterRig, mode: str, dist: float, total: float,
         n_steps = max(1, round(total / step))
         step = total / n_steps
     phi = dist / step if step > 1e-9 else 0.0
+    if total > 1e-6:
+        u_raw = dist / total
+        if u_raw > 0.75:
+            c = (u_raw - 0.75) / 0.25
+            phi += c * c * (3 - 2 * c)
     duty = min(g["duty"] + 0.05, 0.75)
 
     pose = rig.rest_pose()

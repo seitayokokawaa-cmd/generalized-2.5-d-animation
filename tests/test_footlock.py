@@ -15,7 +15,7 @@ SCREENPLAY = """
 motionforge: 1
 meta:
   resolution: [192, 108]
-  fps: 6
+  fps: 12
   seed: 2
 characters:
   walker: {body: human, height: 1.7}
@@ -96,7 +96,19 @@ def test_plants_advance_monotonically(plant_history):
             assert START_X - 1e-6 <= p <= DEST_X + 1e-6
 
 
-def test_final_plant_at_destination(plant_history):
+def test_leading_foot_final_plant_at_destination(plant_history):
+    """The stride is fitted so the last step lands exactly on the mark:
+    the leading foot's final plant must be the destination x."""
+    finals = {leg: samples[-1][1] for leg, samples in plant_history.items()}
+    leading = max(finals.values())
+    assert abs(leading - DEST_X) <= 0.05, (
+        f"leading foot final plant at {leading}, wanted {DEST_X} +-0.05")
+
+
+def test_trailing_foot_final_plant_at_destination(plant_history):
+    """Fixed: the gait now overdrives the phase by one step across the final
+    quarter of the walk, so the trailing foot takes a catch-up step and both
+    feet finish at the destination."""
     for leg, samples in plant_history.items():
         final = samples[-1][1]
         assert abs(final - DEST_X) <= 0.05, (

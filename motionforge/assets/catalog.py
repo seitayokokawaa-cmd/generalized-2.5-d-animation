@@ -53,6 +53,15 @@ def validate_assets(production: Production, report: Report) -> None:
                            " (or define it under assets:)", p.line)
                 continue
             placed_types[p.id] = p.name
+            if p.tint is not None:
+                from ..core import color as colors
+                try:
+                    colors.parse(p.tint, production.palette)
+                except ValueError as e:
+                    report.add("E130", f"scene '{scene.id}' place '{p.id}'",
+                               f"tint: {e}",
+                               "use #hex, a palette name, or a built-in color",
+                               p.line)
             ps = p.params.get("part_state")
             if isinstance(ps, dict):
                 for part in ps:

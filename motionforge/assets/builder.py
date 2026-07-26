@@ -53,7 +53,10 @@ class ObjectType:
         state = part_state or {}
         tint_rgba = None
         if tint is not None:
-            tint_rgba = colors.parse(tint, palette)
+            try:
+                tint_rgba = colors.parse(tint, palette)
+            except ValueError:
+                tint_rgba = None      # validator reports it; draw untinted
         root = Node(name=self.name)
         for part in self.root:
             root.children.append(self._build(part, state, tint_rgba))
@@ -95,25 +98,29 @@ def _parse_paint(spec, palette, where: str, report: Optional[Report]):
     if spec is None:
         return None
     if isinstance(spec, dict) and ("stops" in spec or "gradient" in spec):
+        from ..core.coerce import fnum, fvec2
         kind = str(spec.get("gradient", "linear"))
         stops_raw = spec.get("stops", [])
+        if not isinstance(stops_raw, list):
+            stops_raw = []
         stops = []
         for i, st in enumerate(stops_raw):
             if isinstance(st, (list, tuple)) and len(st) == 2:
                 off, col = st
             else:
                 off, col = (i / max(len(stops_raw) - 1, 1), st)
+            off = fnum(off, i / max(len(stops_raw) - 1, 1), lo=0.0, hi=1.0)
             try:
-                stops.append((float(off), colors.parse(col, palette)))
+                stops.append((off, colors.parse(col, palette)))
             except ValueError as e:
                 if report:
                     report.add("E130", where, str(e), "")
-                stops.append((float(off), (0.5, 0.5, 0.5, 1.0)))
+                stops.append((off, (0.5, 0.5, 0.5, 1.0)))
         return Gradient(kind=kind, stops=stops,
-                        p0=tuple(spec.get("from", (0.0, 0.0))),
-                        p1=tuple(spec.get("to", (0.0, 1.0))),
-                        r0=float(spec.get("r0", 0.0)),
-                        r1=float(spec.get("r1", 1.0)))
+                        p0=fvec2(spec.get("from"), (0.0, 0.0)),
+                        p1=fvec2(spec.get("to"), (0.0, 1.0)),
+                        r0=fnum(spec.get("r0", 0.0), 0.0, lo=0.0),
+                        r1=fnum(spec.get("r1", 1.0), 1.0, lo=0.0))
     try:
         return colors.parse(spec, palette)
     except ValueError as e:
@@ -133,27 +140,38 @@ def _parse_part(raw: dict, idx: int, where: str, palette: dict,
         return None
     unknown = [k for k in raw if k not in _PART_KEYS and k not in _shape_param_keys(raw)]
     # shape params are free-form per shape; only flag keys when there is no shape
+    from ..core.coerce import fnum, fvec2, is_vec2
+
+    def bad(field: str, value) -> None:
+        if report:
+            report.add("E134", w, f"'{field}' must be a number, got {value!r}",
+                       "using the default instead")
+
     part = Part(name=str(raw.get("name", "")))
     at = raw.get("at", (0.0, 0.0))
-    part.at = (float(at[0]), float(at[1])) if isinstance(at, (list, tuple)) and len(at) == 2 else (0.0, 0.0)
-    part.angle = float(raw.get("angle", 0.0))
+    if at != (0.0, 0.0) and not is_vec2(at):
+        bad("at", at)
+    part.at = fvec2(at, (0.0, 0.0))
+    if "angle" in raw and not isinstance(raw["angle"], (int, float)):
+        bad("angle", raw["angle"])
+    part.angle = fnum(raw.get("angle", 0.0), 0.0)
     sc = raw.get("scale", 1.0)
-    if isinstance(sc, (int, float)):
+    if isinstance(sc, (int, float)) and not isinstance(sc, bool):
         part.scale = (float(sc), float(sc))
-    elif isinstance(sc, (list, tuple)) and len(sc) == 2:
+    elif is_vec2(sc):
         part.scale = (float(sc[0]), float(sc[1]))
+    elif sc != 1.0:
+        bad("scale", sc)
     if raw.get("flip"):
         part.scale = (-part.scale[0], part.scale[1])
-    part.opacity = float(raw.get("opacity", 1.0))
+    part.opacity = fnum(raw.get("opacity", 1.0), 1.0, lo=0.0, hi=1.0)
     part.articulate = str(raw.get("articulate", ""))
     if part.articulate and part.articulate not in ("spin", "hinge", "slide"):
         if report:
             report.add("E132", w, f"unknown articulation '{part.articulate}'",
                        "use spin, hinge, or slide")
         part.articulate = ""
-    axis = raw.get("axis", (1.0, 0.0))
-    if isinstance(axis, (list, tuple)) and len(axis) == 2:
-        part.axis = (float(axis[0]), float(axis[1]))
+    part.axis = fvec2(raw.get("axis"), (1.0, 0.0))
 
     if "parts" in raw:
         for i, child in enumerate(raw.get("parts") or []):
@@ -190,7 +208,9 @@ def _parse_part(raw: dict, idx: int, where: str, palette: dict,
     if stroke_spec is not None:
         if isinstance(stroke_spec, dict):
             paint = _parse_paint(stroke_spec.get("color", "#000"), palette, w, report)
-            part.stroke = Stroke(paint=paint, width=float(stroke_spec.get("width", 0.03)))
+            part.stroke = Stroke(paint=paint,
+                                 width=fnum(stroke_spec.get("width", 0.03), 0.03,
+                                            lo=0.0))
         else:
             part.stroke = Stroke(paint=_parse_paint(stroke_spec, palette, w, report),
                                  width=0.03)
@@ -227,11 +247,9 @@ def compile_object(name: str, raw: Dict[str, Any], palette: Optional[dict] = Non
             p = _parse_part(praw, i, where, palette, report)
             if p:
                 parts.append(p)
-    size = raw.get("size", (1.0, 1.0))
-    if not (isinstance(size, (list, tuple)) and len(size) == 2):
-        size = (1.0, 1.0)
-    obj = ObjectType(name=name, root=parts,
-                     size=(float(size[0]), float(size[1])))
+    from ..core.coerce import fvec2
+    size = fvec2(raw.get("size"), (1.0, 1.0))
+    obj = ObjectType(name=name, root=parts, size=size)
 
     def collect(ps: List[Part]) -> None:
         for p in ps:

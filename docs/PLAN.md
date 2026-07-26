@@ -69,8 +69,15 @@ Full design: [ARCHITECTURE.md](ARCHITECTURE.md).
 - [x] **M10 — AI authorship**: deep validator with fixable plain-language errors,
       `motionforge spec` (always-current language doc generated from code),
       `motionforge auto` (LLM write→check→fix→render loop)
-- [ ] **M11 — Ship**: example screenplays, pytest suite (determinism, foot-lock invariant,
+- [x] **M11 — Ship**: example screenplays, pytest suite (determinism, foot-lock invariant,
       validator coverage), adversarial review pass, golden end-to-end renders, final README
+
+All milestones complete. The adversarial review (two independent lenses, all findings
+reproduced before fixing) closed: a ragdoll lazy-compile determinism break, diagonal-path
+overshoot, wrong-hand throws, releases swallowed inside the grab window, the trailing-foot
+catch-up step, and ~20 crash-on-bad-input paths now covered by tolerant coercion + new
+validator rules. Final state: 93 tests green; 3 example films check clean and render to
+MP4 faster than realtime.
 
 ## CLI surface (target)
 

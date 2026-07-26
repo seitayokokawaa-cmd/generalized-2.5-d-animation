@@ -208,6 +208,11 @@ class CharProgram:
             self.blinks.append(t)
             t += float(rng.uniform(2.2, 4.8))
         self.idle_phase = float(seed_rng.stream(f"idle:{placement.id}").uniform(0, 6.28))
+        # compile ragdolls eagerly (must be last: capture samples state()):
+        # position() and state() must agree from the very first sample in
+        # every process — the bit-exact determinism contract
+        if self.ragdolls:
+            self._ensure_ragdolls()
 
     def insert_teleport(self, t: float, pos: Tuple[float, float]) -> None:
         """Continue from `pos` after time t (used by dismounts, ragdolls)."""
@@ -286,6 +291,11 @@ class CharProgram:
             st.pos = (lerp(seg.p0[0], seg.p1[0], u), lerp(seg.p0[1], seg.p1[1], u))
             st.facing = seg.dir
             return st
+        # unit path direction: distance maps through it, so state().pos always
+        # equals position() — no overshoot or end-of-segment snap on diagonals
+        ux = (seg.p1[0] - seg.p0[0]) / seg.total
+        uy = (seg.p1[1] - seg.p0[1]) / seg.total
+
         if seg.mode in ("swim", "fly"):
             from .gait_special import fish_swim_pose, fly_pose, swim_pose
             if self.rig.style.get("body") == "fish":
@@ -295,7 +305,7 @@ class CharProgram:
             else:
                 fn = fly_pose
             st = fn(self.rig, dist, seg.total, t - seg.t0, seg.dir)
-            st.pos = (seg.p0[0] + dist * seg.dir, lerp(seg.p0[1], seg.p1[1], u))
+            st.pos = (seg.p0[0] + dist * ux, seg.p0[1] + dist * uy)
             st.facing = seg.dir
             return st
 
@@ -307,10 +317,9 @@ class CharProgram:
         else:
             st = LocoState(pos=(dist, 0.0), facing=seg.dir, pose=self.rig.rest_pose(),
                            phase=dist * 2.0)
-        # map path-local to world
-        wx = seg.p0[0] + st.pos[0] * seg.dir
-        wy = lerp(seg.p0[1], seg.p1[1], u)
-        st.pos = (wx, wy)
+        # st.pos[0] is distance along the path; map through the unit direction
+        d_along = st.pos[0]
+        st.pos = (seg.p0[0] + d_along * ux, seg.p0[1] + d_along * uy)
         st.facing = seg.dir
         return st
 
@@ -403,8 +412,10 @@ class CharProgram:
         local = t - t0
         prev = None
         nxt = None
+        keys = [k for k in keys if isinstance(k, dict)]
+        from ..core.coerce import fnum as _fn
         for k in keys:
-            kt = float(k.get("t", 0.0))
+            kt = _fn(k.get("t", 0.0), 0.0)
             if kt <= local:
                 prev = k
             elif nxt is None:
@@ -424,14 +435,14 @@ class CharProgram:
         for bone in set(b0) | set(b1):
             if bone not in self.rig.skeleton.bones:
                 continue
-            v0 = float(b0.get(bone, pose.angles.get(bone, 0.0)))
-            v1 = float(b1.get(bone, v0))
+            v0 = _fn(b0.get(bone, pose.angles.get(bone, 0.0)), 0.0)
+            v1 = _fn(b1.get(bone, v0), v0)
             pose.angles[bone] = lerp(v0, v1, k)
         m0 = blend_from.get("morphs", {}) or {}
         m1 = cur.get("morphs", {}) or {}
         for m in set(m0) | set(m1):
-            v0 = float(m0.get(m, pose.morphs.get(m, 0.0)))
-            v1 = float(m1.get(m, v0))
+            v0 = _fn(m0.get(m, pose.morphs.get(m, 0.0)), 0.0)
+            v1 = _fn(m1.get(m, v0), v0)
             pose.morphs[m] = lerp(v0, v1, k)
 
     # --------------------------------------------------------------- ragdoll
@@ -446,10 +457,9 @@ class CharProgram:
             for d in self.ragdolls:
                 t0 = d.t
                 t1 = d.until if d.until is not None else t0 + 1.6
-                recover = float(d.params.get("recover", 0.6))
-                imp = d.params.get("impulse", [0.0, 0.0])
-                if not (isinstance(imp, (list, tuple)) and len(imp) == 2):
-                    imp = [0.0, 0.0]
+                from ..core.coerce import fnum, fvec2
+                recover = fnum(d.params.get("recover", 0.6), 0.6, lo=0.05)
+                imp = fvec2(d.params.get("impulse"), (0.0, 0.0))
                 dt_prev = 1.0 / 60.0
                 cur = self.state(max(t0 - 1e-3, 0.0))
                 prev = self.state(max(t0 - 1e-3 - dt_prev, 0.0))
@@ -522,8 +532,10 @@ class CharProgram:
                               (l1 - t) / max(ramp, 1e-9), 1.0), 0.0, 1.0)
                 self._apply_look(pose, target, t, w, resolve_pos)
 
+        from ..core.coerce import fnum
         for (t0, keys) in self.pose_tracks:
-            end = t0 + max((float(k.get("t", 0.0)) for k in keys), default=0.0)
+            end = t0 + max((fnum(k.get("t", 0.0), 0.0)
+                            for k in keys if isinstance(k, dict)), default=0.0)
             if t0 <= t <= end + 0.5:
                 self._apply_pose_track(pose, t0, keys, t)
 
@@ -555,22 +567,23 @@ class ObjProgram:
         self.angle = Track(0.0)
         self.opacity = Track(1.0)
         self.parts: Dict[str, Track] = {}
+        from ..core.coerce import fnum, fvec2, is_vec2
         init = placement.params.get("part_state")
         if isinstance(init, dict):
             for k, v in init.items():
-                self.parts[str(k)] = Track(float(v))
+                self.parts[str(k)] = Track(fnum(v, 0.0))
         self.spins: List[Tuple[float, Optional[float], str, float]] = []
         # (t0, t1, part, rpm)
 
         for d in directions:
             p = d.params
-            over = float(p.get("over", 0.0) or 0.0)
+            over = fnum(p.get("over", 0.0), 0.0, lo=0.0)
             if d.until is not None and over == 0.0:
                 over = max(d.until - d.t, 0.0)
             ez = str(p.get("ease", "in_out"))
             if d.verb == "move":
                 to = p.get("to")
-                if isinstance(to, (list, tuple)) and len(to) == 2:
+                if is_vec2(to):
                     self.pos.hold(d.t)
                     self.pos.add(d.t + max(over, 0.001), (float(to[0]), float(to[1])), ez)
             elif d.verb == "spin":
@@ -578,29 +591,29 @@ class ObjProgram:
                 if part is None:
                     continue
                 if "rpm" in p:
-                    self.spins.append((d.t, d.until, part, float(p["rpm"])))
+                    self.spins.append((d.t, d.until, part, fnum(p["rpm"], 10.0)))
                 elif "to" in p:
                     tr = self.parts.setdefault(part, Track(0.0))
                     tr.hold(d.t)
-                    tr.add(d.t + max(over, 0.001), float(p["to"]), ez)
+                    tr.add(d.t + max(over, 0.001), fnum(p["to"], 0.0), ez)
             elif d.verb in ("hinge", "slide"):
                 part = self._part_for(d, d.verb)
                 if part is None:
                     continue
                 tr = self.parts.setdefault(part, Track(0.0))
                 tr.hold(d.t)
-                tr.add(d.t + max(over, 0.3), float(p.get("to", 0.0)), ez)
+                tr.add(d.t + max(over, 0.3), fnum(p.get("to", 0.0), 0.0), ez)
             elif d.verb == "show":
-                fade = float(p.get("fade", 0.0) or 0.0)
+                fade = fnum(p.get("fade", 0.0), 0.0, lo=0.0)
                 self.opacity.hold(d.t)
                 self.opacity.add(d.t + max(fade, 0.001), 1.0, "linear")
             elif d.verb == "hide":
-                fade = float(p.get("fade", 0.0) or 0.0)
+                fade = fnum(p.get("fade", 0.0), 0.0, lo=0.0)
                 self.opacity.hold(d.t)
                 self.opacity.add(d.t + max(fade, 0.001), 0.0, "linear")
             elif d.verb == "bounce":
-                h = float(p.get("height", 0.5))
-                times = int(p.get("times", 3))
+                h = fnum(p.get("height", 0.5), 0.5, lo=0.0)
+                times = int(fnum(p.get("times", 3), 3, lo=1, hi=50))
                 span = max(over, 0.001) if over else 1.0
                 base = self.pos.sample(d.t)
                 self.pos.hold(d.t)
@@ -610,9 +623,9 @@ class ObjProgram:
                     y = abs(math.sin(u * times * math.pi)) * h * (1.0 - u * 0.5)
                     self.pos.add(d.t + u * span, (base[0], base[1] + y), "linear")
             elif d.verb == "orbit":
-                c = p.get("center", [0, 1])
-                r = float(p.get("radius", 1.0))
-                rpm = float(p.get("rpm", 10.0))
+                c = fvec2(p.get("center"), (0.0, 1.0))
+                r = fnum(p.get("radius", 1.0), 1.0, lo=0.0)
+                rpm = fnum(p.get("rpm", 10.0), 10.0)
                 span = max(over, 0.001) if over else (d.until - d.t if d.until else 4.0)
                 base = self.pos.sample(d.t)
                 self.pos.hold(d.t)
@@ -624,9 +637,9 @@ class ObjProgram:
                                  (float(c[0]) + math.cos(ang) * r,
                                   float(c[1]) + math.sin(ang) * r), "linear")
             elif d.verb == "fall":
-                h = float(p.get("height", 0.0))
+                h = fnum(p.get("height", 0.0), 0.0, lo=0.0)
                 base = self.pos.sample(d.t)
-                target_y = float(p.get("to_y", 0.0))
+                target_y = fnum(p.get("to_y", 0.0), 0.0)
                 start_y = base[1] + h if h else base[1]
                 drop = max(start_y - target_y, 0.0)
                 dur = math.sqrt(2 * drop / 9.8) if drop > 0 else 0.001

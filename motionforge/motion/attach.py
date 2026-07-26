@@ -67,9 +67,10 @@ class SceneLinks:
             obj_id = str(p.get("obj", ""))
             hand = "far" if str(p.get("hand", "near")) in ("far", "left") else "near"
             if d.verb == "pickup":
+                from ..core.coerce import is_vec2
                 grip = p.get("grip")
                 ent = entities.get(obj_id)
-                if not (isinstance(grip, (list, tuple)) and len(grip) == 2):
+                if not is_vec2(grip):
                     size = ent.obj_type.size if ent is not None and ent.obj_type else (0.4, 0.4)
                     grip = (0.0, size[1] * 0.55)
                 self._end_open_hold(obj_id, d.t + GRAB_DELAY)
@@ -89,8 +90,8 @@ class SceneLinks:
                     Hold(t_mid, math.inf, to_char, other_hand,
                          self._last_grip(obj_id)))
             elif d.verb == "throw":
-                to = p.get("to", [0.0, 0.0])
-                target = (float(to[0]), float(to[1])) if isinstance(to, (list, tuple)) else (0.0, 0.0)
+                from ..core.coerce import fvec2
+                target = fvec2(p.get("to"), (0.0, 0.0))
                 t_rel = d.t + 0.35
                 self._end_open_hold(obj_id, t_rel)
                 self.flights.setdefault(obj_id, []).append(
@@ -104,9 +105,10 @@ class SceneLinks:
                     if fl.t0 < d.t and (fl.duration == 0.0 or fl.t0 + fl.duration > d.t):
                         fl.duration = min(fl.duration or (d.t - fl.t0), d.t - fl.t0) or (d.t - fl.t0)
             elif d.verb in ("ride", "sit_on", "mount"):
+                from ..core.coerce import is_vec2
                 ent = entities.get(obj_id)
                 off = p.get("offset")
-                if not (isinstance(off, (list, tuple)) and len(off) == 2):
+                if not is_vec2(off):
                     size = ent.obj_type.size if ent is not None and ent.obj_type else (1.0, 1.0)
                     off = (0.0, size[1] * (0.55 if d.verb == "ride" else 0.45))
                 t1 = d.until if d.until is not None else math.inf
@@ -132,8 +134,13 @@ class SceneLinks:
 
     def _end_open_hold(self, obj_id: str, t: float) -> None:
         for h in self.holds.get(obj_id, []):
-            if h.t1 == math.inf and h.t0 < t:
+            if h.t1 != math.inf:
+                continue
+            if h.t0 < t:
                 h.t1 = t
+            else:
+                # release scheduled before the grab engages: cancel the hold
+                h.t1 = h.t0
 
     def _last_grip(self, obj_id: str) -> Tuple[float, float]:
         holds = self.holds.get(obj_id, [])
@@ -190,7 +197,8 @@ class SceneLinks:
         key = (obj_id, int(best.t0 * 1000))
         if key not in self._flight_cache:
             p_r, _ang, facing = self._hand(best.release_from[0],
-                                           "near", max(best.t0 - 1e-3, 0.0))
+                                           best.release_from[1],
+                                           max(best.t0 - 1e-3, 0.0))
             if math.isnan(best.target[0]):     # drop: straight down
                 target = (p_r[0] + 0.15 * facing, 0.1)
                 T = math.sqrt(max(2 * (p_r[1] - target[1]) / -G, 0.02))

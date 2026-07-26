@@ -51,6 +51,13 @@ def action(name: str, dur: float, loop: bool, mask: str, doc: str = "",
     return deco
 
 
+def _num(params: dict, key: str, default: float) -> float:
+    v = params.get(key, default)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return default
+    return float(v)
+
+
 def _side(params: dict) -> str:
     s = str(params.get("hand", params.get("side", "near")))
     return "far" if s in ("far", "left", "back") else "near"
@@ -78,7 +85,7 @@ def _rise(u: float, frac: float = 0.2) -> float:
         {"hand": "near|far", "times": "waves per loop (default 2)"})
 def act_wave(u, p, rig):
     s = _side(p)
-    w = _osc(u, float(p.get("times", 2.0)))
+    w = _osc(u, _num(p, "times", 2.0))
     return ({f"uarm_{s}": 150.0, f"farm_{s}": 35.0 + w * 25.0,
              f"hand_{s}": w * 10.0},
             {"smile": 0.5, "brow_raise": 0.3}, ZERO)
@@ -89,14 +96,14 @@ def act_wave(u, p, rig):
 def act_point(u, p, rig):
     s = _side(p)
     k = _rise(u, 0.25)
-    up = float(p.get("up", 0.0))
+    up = _num(p, "up", 0.0)
     return ({f"uarm_{s}": (90.0 + up) * k, f"farm_{s}": 0.0, f"hand_{s}": 0.0},
             {}, ZERO)
 
 
 @action("clap", 1.0, True, "arms", "applaud", {"times": "claps per loop (default 2)"})
 def act_clap(u, p, rig):
-    w = abs(_osc(u, float(p.get("times", 2.0))))
+    w = abs(_osc(u, _num(p, "times", 2.0)))
     return ({"uarm_near": 95.0 + w * 12.0, "farm_near": 35.0 - w * 25.0,
              "uarm_far": 85.0 - w * 12.0, "farm_far": 45.0 - w * 25.0},
             {"smile": 0.6}, ZERO)
@@ -114,7 +121,7 @@ def act_shake(u, p, rig):
 
 @action("bow", 2.0, False, "upper", "bow politely", {"deep": "0..1 (default 0.6)"})
 def act_bow(u, p, rig):
-    k = _rise(u, 0.3) * float(p.get("deep", 0.6))
+    k = _rise(u, 0.3) * _num(p, "deep", 0.6)
     return ({"spine": -55.0 * k, "neck": -15.0 * k,
              "uarm_near": 20.0 * k, "uarm_far": -20.0 * k}, {}, ZERO)
 
@@ -209,7 +216,7 @@ def act_mourn(u, p, rig):
         {"seat": "seat height in m (default 0.45)"}, suppresses_locomotion=True)
 def act_sit(u, p, rig):
     k = _rise(min(u, 1.0), 0.9) if u < 1.0 else 1.0
-    seat = float(p.get("seat", 0.45))
+    seat = _num(p, "seat", 0.45)
     leg = rig.height * 0.48
     drop = (rig.hip_height - seat) * k
     return ({"thigh_near": 85.0 * k, "shin_near": -80.0 * k, "foot_near": -5.0 * k,

@@ -31,8 +31,14 @@ def validate_motion(production: Production, report: Report) -> None:
         heights: Dict[str, float] = {}
         for p in scene.place:
             if p.kind == "char" and p.name in production.characters:
-                params = production.characters[p.name].params
-                heights[p.id] = float(params.get("height", params.get("size", 1.7)))
+                cdef = production.characters[p.name]
+                raw = cdef.params.get("height", cdef.params.get("size", 1.7))
+                if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+                    report.add("E112", f"character '{p.name}'",
+                               f"height/size must be a number, got {raw!r}",
+                               "e.g. height: 1.7 (meters)", cdef.line)
+                    raw = 1.7
+                heights[p.id] = float(raw)
 
         loco_windows: Dict[str, List[tuple]] = {}
         throws: Dict[str, List[float]] = {}
@@ -58,10 +64,12 @@ def validate_motion(production: Production, report: Report) -> None:
                 continue
 
             if verb in LOCO:
+                from ..core.coerce import is_vec2
                 to = d.params.get("to")
-                if not (isinstance(to, (list, tuple)) and len(to) == 2):
+                if not is_vec2(to):
                     report.add("E221", d.where,
-                               f"'{verb}' needs a destination: to: [x, y]",
+                               f"'{verb}' needs a destination of two numbers: to: [x, y]"
+                               + (f" (got {to!r})" if to is not None else ""),
                                "e.g. {char: name, do: %s, to: [3, 0], until: 4.0}" % verb,
                                d.line)
                     continue

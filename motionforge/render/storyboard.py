@@ -13,6 +13,7 @@ def render_storyboard(production: Production, out_path: str,
     world = World(production)
     dur = production.duration
     count = max(2, count)
+    columns = max(1, columns)
     times = [dur * (i + 0.5) / count for i in range(count)]
     thumb_w = 320
     thumb_h = int(thumb_w * world.height / world.width)

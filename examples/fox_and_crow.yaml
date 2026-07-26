@@ -1,0 +1,127 @@
+# The Fox and the Crow — Aesop's fable in two scenes (~30 s).
+#
+# Showcases: a quadruped fox and a bird that really flies (do: fly) to and
+# from a branch of a custom oak asset, a custom 'cheese' prop the crow
+# carries in its beak and drops (the fox snaps it up), emotes and spoken
+# lines with automatic subtitles, and a dusk-to-starry-night ending.
+
+motionforge: 1
+
+meta:
+  title: "The Fox and the Crow"
+  resolution: [1280, 720]
+  fps: 30
+  seed: 23
+
+palette:
+  bark: "#6d4a30"
+  bark_dark: "#503421"
+  leaf: "#4f7a3a"
+  leaf_dark: "#3c5f2c"
+  cheese_gold: "#f0c04a"
+  cheese_rind: "#d9a43b"
+
+assets:
+  oak:                          # an old oak with one long bare branch to perch on
+    size: [3.8, 4.8]
+    parts:
+      - {name: roots, shape: ellipse, rx: 1.1, ry: 0.22, fill: bark_dark}
+      - {name: trunk, shape: capsule, w: 0.55, h: 3.2, fill: bark,
+         stroke: {color: bark_dark, width: 0.05}}
+      - {name: branch, shape: capsule, w: 0.17, h: 1.7, at: [-0.12, 2.45],
+         angle: 80, fill: bark, stroke: {color: bark_dark, width: 0.04}}
+      - {name: twig, shape: capsule, w: 0.09, h: 0.5, at: [-1.3, 2.66],
+         angle: -12, fill: bark}
+      - {name: crown, shape: blob, fill: leaf, stroke: {color: leaf_dark, width: 0.05},
+         points: [[-1.4, 3.3], [-0.8, 4.2], [0.1, 4.6], [1.0, 4.3],
+                  [1.6, 3.5], [1.0, 2.9], [0.1, 2.8], [-0.7, 2.9]]}
+  cheese:                       # the famous wedge
+    size: [0.44, 0.3]
+    parts:
+      - {name: wedge, shape: polygon, fill: cheese_gold,
+         stroke: {color: cheese_rind, width: 0.03},
+         points: [[-0.22, 0], [0.22, 0], [0.22, 0.28], [-0.22, 0.1]]}
+      - {name: hole1, shape: circle, r: 0.035, cy: 0, at: [0.09, 0.13], fill: cheese_rind}
+      - {name: hole2, shape: circle, r: 0.025, cy: 0, at: [-0.05, 0.06], fill: cheese_rind}
+
+characters:
+  renard: {body: quadruped, species: fox, size: 0.95}
+  kova: {body: bird, species: crow, size: 0.62, color: "#454b5e", eyes: "#c9b458"}
+
+scenes:
+  # ------------------------------------------------- 1. the flattery
+  - id: flattery
+    duration: 19
+    background:
+      sky: dusk
+      weather: none
+      ground: {kind: grass, color: "#4a5c38"}
+      mood: warm
+    transition_in: {type: fade, dur: 1.0}
+    camera:
+      keys:
+        - {t: 0, x: -0.6, y: 1.1, zoom: 1.0}
+        - {t: 5.5, x: 0.8, y: 1.5, zoom: 1.0, ease: in_out}
+        - {t: 12.5, x: 1.4, y: 1.6, zoom: 1.06, ease: in_out}
+    place:
+      - {char: kova, at: [-1.2, 0], depth: near, facing: right, layer: 3}
+      - {char: renard, at: [-7.2, 0], depth: near, facing: right}
+      - {obj: cheese, id: cheese, at: [-0.85, 0], depth: near, layer: 4}
+      - {obj: oak, id: oak, at: [3.3, 0], depth: near, scale: 0.85}
+      - {obj: tree, at: [-5, 0], depth: mid, tint: "#41582f"}
+      - {obj: bush, at: [6.2, 0], depth: mid}
+      - {obj: mountain, at: [-1, 0], depth: far, tint: "#7a6a80"}
+      - {obj: flower, at: [-4.2, 0], depth: fg, scale: 1.4}
+    timeline:
+      - {t: 0.6, char: kova, do: pickup, obj: cheese}
+      - {t: 1.9, char: kova, do: fly, to: [1.95, 2.32], until: 3.7}
+      - {t: 2.4, char: renard, do: run, to: [0.2, 0], until: 5.0}
+      - {t: 5.1, char: renard, look: kova, until: 9.2}
+      - {t: 5.4, char: renard, say: "Madam Crow, how glossy your feathers!", until: 8.4}
+      - {t: 6.4, char: kova, emote: happy, until: 9.4}
+      - {t: 7.0, char: kova, look: renard, until: 12.4}
+      - {t: 8.8, char: renard, say: "Is your voice as fine as your dress?", until: 11.6}
+      - {t: 11.9, char: renard, do: walk, to: [2.15, 0], until: 13.4}
+      - {t: 12.7, char: kova, say: "Caw! Caw!", until: 14.1}
+      - {t: 13.1, char: kova, do: drop, obj: cheese}
+      - {t: 14.3, char: renard, do: pickup, obj: cheese}
+      - {t: 15.3, char: kova, emote: surprised, until: 16.5}
+      - {t: 15.5, char: renard, emote: happy, until: 18.6}
+      - {t: 15.7, char: renard, say: "A fair price for a song!", until: 18.0}
+      - {t: 16.6, char: kova, emote: angry, until: 18.8}
+    captions:
+      - {t: 0.6, until: 3.2, text: "The Fox and the Crow", style: title}
+      - {t: 3.4, until: 5.4, text: "after Aesop", style: lower_third}
+
+  # ------------------------------------------------- 2. night falls
+  - id: nightfall
+    duration: 11
+    background:
+      sky: night
+      weather: none
+      ground: {kind: grass, color: "#2c3a28"}
+      mood: night
+    transition_in: {type: dissolve, dur: 1.4}
+    camera:
+      keys:
+        - {t: 0, x: -0.5, y: 1.5, zoom: 1.0}
+        - {t: 10.5, x: -1.2, y: 1.9, zoom: 0.92, ease: in_out}
+    place:
+      - {char: kova, at: [0.95, 2.3], depth: near, facing: left, layer: 3}
+      - {char: renard, at: [-1.4, 0], depth: near, facing: left}
+      - {obj: cheese, id: cheese, at: [-1.9, 0.3], depth: near, layer: 4}
+      - {obj: oak, id: oak, at: [2.3, 0], depth: near, scale: 0.85}
+      - {obj: tree, at: [-6.5, 0], depth: mid, tint: "#2c3e24"}
+      - {obj: mountain, at: [1, 0], depth: far, tint: "#3a3f55"}
+    timeline:
+      - {t: 0.4, char: renard, do: pickup, obj: cheese}
+      - {t: 1.7, char: renard, do: walk, to: [-5.8, 0], until: 6.6}
+      - {t: 2.2, char: kova, emote: sad, until: 5.2}
+      - {t: 3.1, char: kova, say: "Never again...", until: 5.1}
+      - {t: 6.0, char: kova, do: fly, to: [7.5, 2.4], until: 8.4}
+    captions:
+      - {t: 7.6, until: 10.6, text: "Moral: beware of flatterers.", style: caption,
+         pos: center, size: 30}
+
+audio:
+  music: {mood: mystery, volume: 0.6}

@@ -23,7 +23,8 @@ STYLES = {
 
 
 def caption_alpha(c: Caption, t: float) -> float:
-    fade = float(c.params.get("fade", 0.25))
+    from ..core.coerce import fnum
+    fade = fnum(c.params.get("fade", 0.25), 0.25, lo=0.0)
     if t < c.t or t > c.until:
         return 0.0
     a = 1.0
@@ -32,24 +33,36 @@ def caption_alpha(c: Caption, t: float) -> float:
     return clamp(a, 0.0, 1.0)
 
 
+def _safe_color(spec, palette, fallback: str):
+    try:
+        return colors.parse(spec, palette)
+    except ValueError:
+        return colors.parse(fallback)
+
+
 def render_caption(c: Caption, t: float, width: int, height: int,
                    palette: Optional[dict] = None) -> List[Shape]:
+    from ..core.coerce import fnum, fvec2
     alpha = caption_alpha(c, t)
     if alpha <= 0.0:
         return []
     style = dict(STYLES.get(c.style, STYLES["caption"]))
     scale = height / 720.0
-    size = float(c.params.get("size", style["size"])) * scale
-    color = colors.parse(c.params.get("color", style["color"]), palette)
+    size = fnum(c.params.get("size", style["size"]), float(style["size"]),
+                lo=4.0, hi=400.0) * scale
+    color = _safe_color(c.params.get("color", style["color"]), palette,
+                        style["color"])
     bg_spec = c.params.get("bg", style["bg"])
-    bg = None if str(bg_spec) in ("none", "") else colors.parse(bg_spec, palette)
+    bg = None if str(bg_spec) in ("none", "") else \
+        _safe_color(bg_spec, palette, "#00000080")
     bold = bool(style.get("bold", False))
     align = style.get("align", "center")
 
     pos = c.params.get("pos", style["pos"])
     if isinstance(pos, str):
         pos = {"top": (0.5, 0.12), "center": (0.5, 0.45), "bottom": (0.5, 0.9)}.get(pos, (0.5, 0.85))
-    px, py = float(pos[0]) * width, float(pos[1]) * height
+    pos = fvec2(pos, tuple(style["pos"]))
+    px, py = pos[0] * width, pos[1] * height
 
     max_w = width * 0.86
     lines = wrap_text(c.text, size, max_w, bold=bold)

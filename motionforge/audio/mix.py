@@ -104,7 +104,8 @@ def build_soundtrack(world: World) -> np.ndarray:
     music_spec = prod.audio.music
     if music_spec:
         mood = str(music_spec.get("mood", "pastoral"))
-        vol = float(music_spec.get("volume", 0.7))
+        from ..core.coerce import fnum
+        vol = fnum(music_spec.get("volume", 0.7), 0.7, lo=0.0, hi=2.0)
         music = render_music(mood, duration, world.rng, vol)
         m = min(len(music), n)
         out[:m] += music[:m]
@@ -119,15 +120,18 @@ def build_soundtrack(world: World) -> np.ndarray:
 
     for i, s in enumerate(prod.audio.sfx or []):
         if isinstance(s, dict) and "sound" in s:
-            play(str(s["sound"]), float(s.get("t", 0.0)), 0.0,
-                 float(s.get("volume", 1.0)), key=f"film{i}")
+            from ..core.coerce import fnum as _fn
+            play(str(s["sound"]), _fn(s.get("t", 0.0), 0.0, lo=0.0), 0.0,
+                 _fn(s.get("volume", 1.0), 1.0, lo=0.0, hi=2.0), key=f"film{i}")
 
     for cs in world.scenes:
         t0s = cs.scene.start_time
         for i, d in enumerate(cs.scene.timeline):
             if d.subject_kind == "sfx":
+                from ..core.coerce import fnum as _fn2
                 play(str(d.params.get("sound", "")), t0s + d.t, 0.0,
-                     float(d.params.get("volume", 1.0)), key=f"{cs.scene.id}:{i}")
+                     _fn2(d.params.get("volume", 1.0), 1.0, lo=0.0, hi=2.0),
+                     key=f"{cs.scene.id}:{i}")
             elif d.subject_kind == "obj" and d.verb == "hinge":
                 ent = cs.entity(d.subject)
                 x = ent.position(d.t)[0] if ent else 0.0

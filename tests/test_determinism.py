@@ -14,7 +14,7 @@ SCREENPLAY = """
 motionforge: 1
 meta:
   resolution: [192, 108]
-  fps: 6
+  fps: 12
   seed: 11
 characters:
   asha: {body: human, height: 1.7}

@@ -57,7 +57,10 @@ class Entity:
                 n.opacity = self.program.opacity_at(t)
             return n
         n = Node(name=p.id)
-        col = colors.parse(p.tint, self.palette) if p.tint else (0.5, 0.45, 0.4, 1.0)
+        try:
+            col = colors.parse(p.tint, self.palette) if p.tint else (0.5, 0.45, 0.4, 1.0)
+        except ValueError:
+            col = (0.5, 0.45, 0.4, 1.0)
         n.add(Shape(path=path_rect(-0.5, 0.0, 1.0, 1.0), fill=col))
         return n
 
@@ -167,8 +170,9 @@ class World:
             sky_changes, weather_changes = [], []
             base_weather = bg.get("weather", "none")
             if isinstance(base_weather, dict):
+                from ..core.coerce import fnum as _fn
                 bw = (str(base_weather.get("kind", "rain")),
-                      float(base_weather.get("intensity", 0.7)))
+                      _fn(base_weather.get("intensity", 0.7), 0.7, lo=0.0, hi=1.0))
             else:
                 bw = (str(base_weather), 0.7 if base_weather not in (None, "none") else 0.0)
             base_mood = str(bg.get("mood", "") or "")
@@ -180,18 +184,19 @@ class World:
             for d in sc.timeline:
                 if d.subject_kind != "world":
                     continue
-                over = float(d.params.get("over", 1.5) or 0.0)
+                from ..core.coerce import fnum as _fo
+                over = _fo(d.params.get("over", 1.5), 1.5, lo=0.0)
                 if d.verb == "sky":
                     sky_changes.append((d.t, str(d.params.get("sky")), over))
                 elif d.verb == "weather":
                     wv = d.params.get("weather")
                     if isinstance(wv, dict):
                         kind = str(wv.get("kind", "rain"))
-                        inten = float(wv.get("intensity", 0.7))
+                        inten = _fo(wv.get("intensity", 0.7), 0.7, lo=0.0, hi=1.0)
                     else:
                         kind = str(wv)
                         inten = 0.0 if kind == "none" else 0.7
-                    inten = float(d.params.get("intensity", inten))
+                    inten = _fo(d.params.get("intensity", inten), inten, lo=0.0, hi=1.0)
                     weather_changes.append((d.t, kind, inten, over))
                 elif d.verb == "mood":
                     cs.moods.append((d.t, str(d.params.get("mood", "neutral"))))
@@ -235,8 +240,11 @@ class World:
         else:
             gname = str(ground)
         if gname != "none":
-            base = colors.parse(gcolor, self.production.palette) if gcolor else \
-                colors.parse(GROUND_COLORS.get(gname, GROUND_COLORS["grass"]))
+            try:
+                base = colors.parse(gcolor, self.production.palette) if gcolor else \
+                    colors.parse(GROUND_COLORS.get(gname, GROUND_COLORS["grass"]))
+            except ValueError:
+                base = colors.parse(GROUND_COLORS["grass"])
             far_c = colors.mix(base, bottom, 0.45)
             near_c = colors.lighten(base, -0.06)
             out.append(Shape(path=path_rect(0, hy, w, h - hy), fill=Gradient(
@@ -254,6 +262,7 @@ class World:
     def frame_plan(self, t_abs: float) -> Dict[str, Any]:
         """Everything the frame compositor needs: main shapes, UI shapes,
         and the active transition (if any)."""
+        from ..core.coerce import fnum
         cs, t = self.scene_at(t_abs)
         main = self.frame_shapes(t_abs)
         ui = self.ui_shapes(cs, t)
@@ -262,7 +271,7 @@ class World:
         idx = self.scenes.index(cs)
         if tr and idx >= 0:
             kind = str(tr.get("type", "fade"))
-            dur = float(tr.get("dur", 1.0))
+            dur = fnum(tr.get("dur", 1.0), 1.0, lo=0.01)
             if t < dur and kind != "cut":
                 u = t / max(dur, 1e-9)
                 prev_shapes = None
@@ -273,7 +282,7 @@ class World:
         tr_out = cs.scene.transition_out
         if tr_out:
             kind = str(tr_out.get("type", "fade"))
-            dur = float(tr_out.get("dur", 1.0))
+            dur = fnum(tr_out.get("dur", 1.0), 1.0, lo=0.01)
             remaining = cs.scene.duration - t
             if remaining < dur and kind == "fade":
                 plan["fade_out"] = 1.0 - remaining / max(dur, 1e-9)

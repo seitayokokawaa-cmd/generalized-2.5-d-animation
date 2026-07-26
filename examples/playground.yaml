@@ -1,0 +1,128 @@
+# Playground — an interaction showcase in two scenes (~25 s).
+#
+# Showcases: throw & catch between two kids, a dog chasing the ball, riding
+# a rolling cart, a ragdoll pratfall with recovery, a mid-scene weather
+# change to snow, an iris transition into a dance celebration with jumps,
+# and lower_third captions.
+
+motionforge: 1
+
+meta:
+  title: "Playground"
+  resolution: [1280, 720]
+  fps: 30
+  seed: 42
+
+characters:
+  leo:
+    body: human
+    age: child
+    height: 1.25
+    skin: "#e8b48a"
+    hair: {style: spiky, color: "#4a2c14"}
+    outfit: {top: "#2e6fbd", bottom: "#39404a", shoes: "#c8c8c8"}
+  mia:
+    body: human
+    age: child
+    height: 1.2
+    skin: "#8d5a3b"
+    hair: {style: ponytail, color: "#141414"}
+    outfit: {top: "#d84f7e", bottom: "#4a3a63", shoes: "#eee"}
+  biscuit: {body: quadruped, species: dog, size: 0.55, color: "#c8974e"}
+
+scenes:
+  # ------------------------------------------------- 1. recess
+  - id: recess
+    duration: 15
+    background:
+      sky: day
+      weather: none
+      ground: grass
+      mood: neutral
+    transition_in: {type: fade, dur: 0.8}
+    camera:
+      keys:
+        - {t: 0, x: -0.8, y: 1.2, zoom: 0.98}
+        - {t: 6.5, x: 1.4, y: 1.2, zoom: 1.0, ease: in_out}
+        - {t: 10.5, x: 0.0, y: 1.2, zoom: 1.02, ease: in_out}
+        - {t: 13.5, x: -0.4, y: 1.2, zoom: 1.08, ease: in_out}
+    place:
+      - {char: mia, at: [-3.4, 0], depth: near, facing: right}
+      - {char: leo, at: [2.8, 0], depth: near, facing: left}
+      - {char: biscuit, at: [-4.9, 0], depth: near, facing: right}
+      - {obj: ball, id: ball1, at: [-3.1, 0], depth: near, layer: 2, tint: "#d8433b"}
+      - {obj: cart, id: cart1, at: [4.7, 0], depth: near, tint: "#7a5a86"}
+      - {obj: bench, at: [-6.2, 0], depth: mid, tint: "#8a6f4e"}
+      - {obj: tree, at: [6.8, 0], depth: mid, scale: 1.2}
+      - {obj: house, at: [-2, 0], depth: far, tint: "#b0897a"}
+      - {obj: fence, at: [0.5, 0], depth: mid, tint: "#907a5c"}
+      - {obj: flower, at: [-5.2, 0], depth: fg, scale: 1.5}
+    timeline:
+      - {t: 0.5, sfx: birdsong, volume: 0.6}
+      - {t: 0.4, char: mia, do: pickup, obj: ball1}
+      - {t: 1.5, char: mia, say: "Catch, Leo!", until: 2.7}
+      - {t: 2.7, char: mia, do: throw, obj: ball1, to: [2.4, 0.9]}
+      - {t: 2.7, char: biscuit, do: run, to: [1.4, 0], until: 6.0}
+      - {t: 3.9, char: leo, do: catch, obj: ball1}
+      - {t: 4.7, char: leo, say: "Got it!", until: 5.7}
+      - {t: 4.9, char: mia, do: clap, until: 6.4}
+      - {t: 5.2, char: leo, do: drop, obj: ball1}
+      - {t: 6.3, char: biscuit, do: jump, to: [2.1, 0], until: 7.0}
+      - {t: 6.3, sfx: boing, volume: 0.5}
+      - {t: 6.0, char: leo, do: walk, to: [4.3, 0], until: 7.5}
+      - {t: 7.7, char: leo, do: ride, obj: cart1}
+      - {t: 8.2, obj: cart1, move: {to: [-1.1, 0], ease: in_out}, until: 11.0}
+      - {t: 8.2, obj: cart1, part: wheel, spin: {rpm: 55}, until: 11.0}
+      - {t: 8.6, char: leo, say: "Wheee!", until: 9.8}
+      - {t: 8.4, char: mia, look: leo, until: 11.4}
+      - {t: 11.3, char: leo, do: dismount}
+      - {t: 11.7, char: leo, ragdoll: {impulse: [2.4, 2.7], recover: 0.9}, until: 12.9}
+      - {t: 12.0, char: mia, emote: surprised, until: 13.1}
+      - {t: 12.4, world: {weather: snow, intensity: 0.7, over: 2.5}}
+      - {t: 12.4, world: {sky: dusk, over: 2.8}}
+      - {t: 12.6, char: mia, do: walk, to: [-1.2, 0], until: 14.4}
+      - {t: 13.3, char: mia, do: laugh, until: 14.7}
+      - {t: 13.9, char: leo, emote: happy, until: 15.0}
+      - {t: 14.1, char: leo, say: "Snow!", until: 15.0}
+    captions:
+      - {t: 0.6, until: 3.0, text: "Saturday, four o'clock", style: lower_third}
+
+  # ------------------------------------------------- 2. snow dance
+  - id: snow_dance
+    duration: 10
+    background:
+      sky: dusk
+      weather: {kind: snow, intensity: 0.8}
+      ground: snow
+      mood: dream
+    transition_in: {type: iris, dur: 1.1}
+    camera:
+      keys:
+        - {t: 0, x: 0, y: 1.3, zoom: 1.22}
+        - {t: 9.5, x: 0, y: 1.4, zoom: 0.98, ease: in_out}
+    place:
+      - {char: leo, at: [-1.6, 0], depth: near, facing: right}
+      - {char: mia, at: [1.4, 0], depth: near, facing: left}
+      - {char: biscuit, at: [-0.2, 0], depth: near, facing: right}
+      - {obj: lamp_post, at: [3.8, 0], depth: mid}
+      - {obj: bench, at: [-4.8, 0], depth: mid, tint: "#9a8a76"}
+      - {obj: tree, at: [5.8, 0], depth: mid, scale: 1.15, tint: "#5d6d5a"}
+      - {obj: house, at: [-4, 0], depth: far, tint: "#8d7d90"}
+    timeline:
+      - {t: 0.5, char: mia, do: dance, until: 8.5}
+      - {t: 0.7, char: leo, do: dance, until: 8.5}
+      - {t: 1.2, char: biscuit, do: jump, to: [0.6, 0], until: 2.0}
+      - {t: 2.6, char: biscuit, do: jump, to: [-0.5, 0], until: 3.4}
+      - {t: 3.2, char: mia, say: "Best day ever!", until: 4.8}
+      - {t: 4.2, char: biscuit, do: run, to: [1.9, 0], until: 5.8}
+      - {t: 5.4, char: leo, emote: happy, until: 9.6}
+      - {t: 5.6, char: mia, emote: happy, until: 9.6}
+      - {t: 6.4, char: biscuit, do: jump, to: [1.0, 0], until: 7.2}
+      - {t: 8.8, char: leo, do: jump, to: [-1.0, 0], until: 9.6}
+      - {t: 8.8, char: mia, do: jump, to: [0.9, 0], until: 9.6}
+    captions:
+      - {t: 0.9, until: 3.1, text: "First snow of the year", style: lower_third}
+      - {t: 8.6, until: 9.9, text: "THE END", style: title}
+
+audio:
+  music: {mood: happy, volume: 0.65}

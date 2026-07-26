@@ -1,0 +1,158 @@
+# The Windmill at Dawn — a small human drama in three scenes (~30 s).
+#
+# Showcases: rain that clears mid-scene, a walk staged across depth planes,
+# a custom articulated asset (spinning blades + hinged door), a Bengali
+# subtitle line via say:, camera pushes and a follow shot, fade + dissolve
+# transitions, and a mood arc expressed through per-scene color grades
+# (cold -> neutral -> warm) over one pastoral music bed.
+
+motionforge: 1
+
+meta:
+  title: "The Windmill at Dawn"
+  resolution: [1280, 720]
+  fps: 30
+  seed: 11
+
+palette:
+  mill_wall: "#8a6f52"
+  mill_trim: "#4c3b28"
+  mill_cap: "#5b4634"
+  mill_door: "#6b4a2e"
+  sail: "#e9e2d0"
+  lamp_glow: "#ffd98a"
+
+assets:
+  mill:                        # a windmill with a door that actually opens
+    size: [3.6, 8.2]
+    parts:
+      - {name: mound, shape: ellipse, rx: 2.4, ry: 0.4, at: [0, -0.1], fill: "#57683f"}
+      - {name: tower, shape: trapezoid, w1: 3.0, w2: 1.5, h: 6.6, fill: mill_wall,
+         stroke: {color: mill_trim, width: 0.06}}
+      - {name: band, shape: rect, w: 2.4, h: 0.16, at: [0, 4.35], fill: mill_trim}
+      - {name: window, shape: circle, r: 0.3, at: [0, 4.95], fill: lamp_glow,
+         stroke: {color: mill_trim, width: 0.06}}
+      - {name: doorway, shape: rect, w: 1.25, h: 2.05, at: [0, 0], round: 0.1,
+         fill: "#2e2318"}
+      - name: door             # hinge pivot at the door's right jamb
+        at: [0.6, 0]
+        articulate: hinge
+        parts:
+          - {shape: rect, w: 1.15, h: 1.95, at: [-0.58, 0], round: 0.08,
+             fill: mill_door, stroke: {color: mill_trim, width: 0.05}}
+          - {shape: circle, r: 0.05, cy: 0, at: [-1.0, 1.0], fill: "#d8b25a"}
+      - {name: cap, shape: arc, r: 0.95, a0: 0, a1: 180, at: [0, 6.55], fill: mill_cap}
+      - name: blades
+        at: [0, 6.95]
+        articulate: spin
+        parts:
+          - {shape: circle, r: 0.22, cy: 0, fill: mill_trim}
+          - {shape: capsule, w: 0.3, h: 3.0, angle: 45, fill: sail}
+          - {shape: capsule, w: 0.3, h: 3.0, angle: 135, fill: sail}
+          - {shape: capsule, w: 0.3, h: 3.0, angle: 225, fill: sail}
+          - {shape: capsule, w: 0.3, h: 3.0, angle: 315, fill: sail}
+
+characters:
+  asha:
+    body: human
+    height: 1.6
+    skin: "#c68642"
+    hair: {style: bun, color: "#1a1208"}
+    outfit: {top: "#c9483b", bottom: "#3a4666", shoes: "#2b2b2b"}
+    eyes: "#3a2a1a"
+
+scenes:
+  # ------------------------------------------------- 1. rain clears at dawn
+  - id: dawn_rain
+    duration: 10
+    background:
+      sky: dawn
+      weather: {kind: rain, intensity: 0.75}
+      ground: {kind: grass, color: "#41573a"}
+      mood: cold
+    transition_in: {type: fade, dur: 1.2}
+    camera:
+      keys:
+        - {t: 0, x: -2.2, y: 1.35, zoom: 1.12}
+        - {t: 9.5, x: -1.5, y: 1.4, zoom: 1.26, ease: in_out}
+    place:
+      - {char: asha, at: [-2.4, 0], depth: near, facing: right}
+      - {obj: house, id: cottage, at: [-7.2, 0], depth: mid, tint: "#7d6a58"}
+      - {obj: mill, id: mill, at: [12, 0], depth: far}
+      - {obj: mountain, at: [4.5, 0], depth: far, scale: 1.2, tint: "#5a6675"}
+      - {obj: fence, at: [2.6, 0], depth: mid, tint: "#6e5b44"}
+      - {obj: tree, at: [7, 0], depth: mid, scale: 1.1, tint: "#3f5a38"}
+    timeline:
+      - {t: 0.0, obj: mill, part: blades, spin: {rpm: 4}}
+      - {t: 0.8, sfx: thunder, volume: 0.6}
+      - {t: 0.5, char: asha, look: [8, 4], until: 3.2}
+      - {t: 1.0, char: asha, emote: sad, until: 3.4}
+      - {t: 3.0, world: {weather: none, over: 3.0}}
+      - {t: 5.0, char: asha, say: "বৃষ্টি থেমে গেছে।", until: 7.0}
+      - {t: 6.2, char: asha, emote: happy, until: 9.6}
+      - {t: 7.4, char: asha, do: point, hand: near, up: 14}
+      - {t: 8.2, char: asha, look: mill, until: 9.8}
+    captions:
+      - {t: 0.8, until: 3.6, text: "The Windmill at Dawn", style: title}
+
+  # ------------------------------------------------- 2. the walk to the mill
+  - id: the_walk
+    duration: 10.5
+    background:
+      sky: dawn
+      weather: none
+      ground: grass
+      mood: neutral
+    transition_in: {type: dissolve, dur: 1.0}
+    camera:
+      follow: {char: asha, lag: 0.5, zoom: 1.1, offset: [1.3, 1.1]}
+    place:
+      - {char: asha, at: [-5.5, 0], depth: near, facing: right}
+      - {obj: mill, id: mill, at: [10, 0], depth: far}
+      - {obj: mountain, at: [3, 0], depth: far, scale: 1.2, tint: "#5a6675"}
+      - {obj: pine, at: [-2.5, 0], depth: mid, tint: "#33502e"}
+      - {obj: fence, at: [2.2, 0], depth: mid, tint: "#6e5b44"}
+      - {obj: flower, at: [-3.2, 0], depth: fg, scale: 1.6}
+      - {obj: tree, at: [12.5, 0], depth: mid, scale: 1.15, tint: "#3f5a38"}
+    timeline:
+      - {t: 0.2, obj: mill, part: blades, spin: {rpm: 7}}
+      - {t: 1.0, sfx: birdsong, volume: 0.7}
+      - {t: 0.6, char: asha, do: walk, to: [3.3, 0], until: 8.2}
+      - {t: 2.2, char: asha, say: "Grandfather's mill still turns.", until: 4.6}
+      - {t: 5.4, char: asha, emote: happy, until: 8.4}
+      - {t: 8.5, char: asha, look: mill, until: 10.3}
+    captions:
+      - {t: 0.9, until: 3.4, text: "Three years since she left home", style: lower_third}
+
+  # ------------------------------------------------- 3. the door opens
+  - id: the_door
+    duration: 10
+    background:
+      sky: day
+      weather: none
+      ground: grass
+      mood: warm
+    transition_in: {type: fade, dur: 0.8}
+    camera:
+      keys:
+        - {t: 0, x: 0.6, y: 2.9, zoom: 0.86}
+    place:
+      - {char: asha, at: [-3.6, 0], depth: near, facing: right, layer: 2}
+      - {obj: mill, id: mill, at: [2.6, 0], depth: near, scale: 0.9}
+      - {obj: tree, at: [-6.8, 0], depth: mid, scale: 1.1, tint: "#4a6a3c"}
+      - {obj: pine, at: [8.4, 0], depth: mid, tint: "#33502e"}
+      - {obj: flower, at: [-5.2, 0], depth: fg, scale: 1.5}
+    timeline:
+      - {t: 0.2, obj: mill, part: blades, spin: {rpm: 7}}
+      - {t: 0.6, char: asha, do: walk, to: [1.75, 0], until: 3.6}
+      - {t: 4.0, char: asha, do: reach_forward, hand: near}
+      - {t: 4.5, obj: mill, part: door, hinge: {to: -100, over: 1.2, ease: out}}
+      - {t: 5.6, char: asha, say: "I'm home.", until: 7.0}
+      - {t: 6.5, char: asha, emote: happy, until: 9.6}
+      - {t: 7.4, char: asha, do: walk, to: [2.55, 0], until: 9.2}
+      - {t: 6.8, camera: {zoom: 1.3, x: 1.9, y: 1.5, over: 2.8, ease: in_out}}
+    captions:
+      - {t: 8.2, until: 9.8, text: "Some doors wait for us.", style: caption}
+
+audio:
+  music: {mood: pastoral, volume: 0.65}

@@ -5,6 +5,7 @@ as much IR as possible, so `check` reports everything in one pass.
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.errors import Report, did_you_mean
@@ -52,6 +53,10 @@ class Cur:
                      f"write {key}: 1.5 style numbers")
             return default
         v = float(v)
+        if not math.isfinite(v):
+            self.err("E112", f"'{key}' must be a finite number, got {v!r}",
+                     "NaN and infinity are not allowed")
+            return default
         if lo is not None and v < lo or hi is not None and v > hi:
             rng = f"{lo if lo is not None else '-inf'}..{hi if hi is not None else 'inf'}"
             self.err("E113", f"'{key}' = {v} is outside the allowed range {rng}",
@@ -305,6 +310,24 @@ def parse_caption(node: Any, where: str, report: Report, idx: int) -> Optional[C
         return None
     style = cur.st("style", "caption",
                    choices=["title", "subtitle", "lower_third", "caption"]) or "caption"
+    if cur.has("size"):
+        cur.num("size", 30.0, lo=4.0, hi=400.0)
+    if cur.has("fade"):
+        cur.num("fade", 0.25, lo=0.0)
+    pos = cur.raw("pos")
+    if pos is not None and not isinstance(pos, str):
+        cur.vec2("pos")
+    for ckey in ("color", "bg"):
+        cval = cur.raw(ckey)
+        # strict check only for literal forms; palette names resolve later
+        if isinstance(cval, (list, tuple)) or (isinstance(cval, str)
+                                               and cval.startswith("#")):
+            from ..core import color as _color
+            try:
+                _color.parse(cval, None)
+            except ValueError as e:
+                cur.err("E130", f"caption {ckey}: {e}",
+                        "use #hex or a built-in color name")
     params = _params_from(node, ("t", "until", "text", "style"))
     return Caption(t=t, until=until, text=text, style=style, params=params,
                    line=line_of(node))
@@ -330,11 +353,22 @@ def parse_camera(node: Any, where: str, report: Report) -> CameraSpec:
             continue
         kc.check_keys(schema.allowed_keys(schema.CAMERA_KEY))
         kc.num("t", 0.0, lo=0.0)
+        for field in ("x", "y"):
+            if kc.has(field):
+                kc.num(field, 0.0)
+        if kc.has("zoom"):
+            kc.num("zoom", 1.0, lo=0.05, hi=50.0)
         spec.keys.append(dict(k, __line__=line_of(k)))
     fol = cur.map("follow")
     if fol is not None:
         fc = Cur(fol, f"{where} > camera > follow", report)
         fc.check_keys(schema.allowed_keys(schema.CAMERA_FOLLOW) + ["obj"])
+        if fc.has("zoom"):
+            fc.num("zoom", 1.0, lo=0.05, hi=50.0)
+        if fc.has("lag"):
+            fc.num("lag", 0.3, lo=0.0)
+        if fc.has("offset"):
+            fc.vec2("offset", (0.0, 1.0))
         spec.follow = dict(fol)
     return spec
 
@@ -398,6 +432,11 @@ def parse_production(data: Dict[str, Any], report: Report) -> Production:
         meta.err("E115", f"'resolution' must be [width, height] ints (16..4096), got {res!r}",
                  "e.g. resolution: [1280, 720]")
         res = [1280, 720]
+    elif res[0] % 2 or res[1] % 2:
+        meta.err("E115", f"resolution {res[0]}x{res[1]} must use even numbers "
+                 "(H.264 requirement)",
+                 f"use [{res[0] + res[0] % 2}, {res[1] + res[1] % 2}]")
+        res = [res[0] + res[0] % 2, res[1] + res[1] % 2]
     prod.meta = Meta(
         title=meta.st("title", "") or "",
         resolution=(int(res[0]), int(res[1])),
