@@ -369,7 +369,8 @@ def act_hammer(u, p, rig):
             {}, ZERO)
 
 
-@action("hug", 2.5, True, "arms", "wrap arms forward (stand partners face to face)")
+@action("hug", 2.5, True, "arms",
+        "wrap arms forward — stand partners facing each other about 0.5 m apart")
 def act_hug(u, p, rig):
     k = _rise(min(u, 1.0), 0.35) if u < 1.0 else 1.0
     return ({"uarm_near": 75.0 * k, "farm_near": 65.0 * k,

@@ -123,6 +123,19 @@ def swim_pose(rig: CharacterRig, dist: float, total: float, t: float,
                      phase=t * 1.8, airborne=True)
 
 
+def fish_swim_pose(rig: CharacterRig, dist: float, total: float, t: float,
+                   facing: float) -> LocoState:
+    """Fish stay level; a traveling wave runs down the spine to the tail."""
+    pose = rig.rest_pose()
+    omega = 2 * math.pi / 0.55
+    for i, bone in enumerate(("body2", "body3", "tail")):
+        if bone in rig.skeleton.bones:
+            pose.angles[bone] = math.sin(t * omega - i * 0.9) * (5.0 + i * 8.0)
+    pose.root = (0.0, pose.root[1])
+    return LocoState(pos=(dist, 0.0), facing=facing, pose=pose,
+                     phase=t * 2.0, airborne=True)
+
+
 def fly_pose(rig: CharacterRig, dist: float, total: float, t: float,
              facing: float) -> LocoState:
     """Flight: birds flap their wings; others soar superhero-style."""

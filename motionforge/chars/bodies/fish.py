@@ -223,12 +223,12 @@ class FishRig(CharacterRig):
                 (d["seg2"] * 0.25 + w * 0.38, -(r1 * 0.75 + h)),
                 (d["seg2"] * 0.25 + w, -r1 * 0.60)]),
                 fill=col, transform=fk.base["body2"]))
-        else:                              # generic: rounded half-moon
+        else:                              # generic: low swept half-moon
             fin = Node(transform=chain(fk.base["body1"],
-                                       translation(d["seg1"] * 0.30, -r0 * 0.70),
-                                       rotation(-24.0)))
+                                       translation(d["seg1"] * 0.28, -r0 * 0.72),
+                                       rotation(-20.0)))
             fin.add(Shape(path=path_ellipse(bl * 0.10, 0.0,
-                                            bl * 0.185 * f, bl * 0.10 * f),
+                                            bl * 0.21 * f, bl * 0.082 * f),
                           fill=col))
             n.children.append(fin)
         if "adipose" in sp["extras"]:      # salmon: tiny nub near the tail
@@ -400,6 +400,10 @@ class FishRig(CharacterRig):
             if kind == "long":             # keep the whale gape tucked in
                 mcx, rx = mcx - hw * 0.25, hw * 0.55
                 ryo = bl * (0.02 + 0.075 * open_amt)
+            elif kind == "small":          # pull back so the gape stays on the head
+                mcx, mcy = front * 0.74, -ry * 0.28
+                rx = hw * (0.8 + 0.2 * open_amt)
+                ryo = ry * (0.05 + 0.30 * open_amt)   # scale with body depth
             else:
                 rx = hw * (0.75 + 0.25 * open_amt)
                 ryo = bl * (0.02 + 0.13 * open_amt)
@@ -417,12 +421,14 @@ class FishRig(CharacterRig):
             n.children.append(mn)
             return
         pts = []
+        curve = bl * (0.09 if kind == "long" else 0.05)
         for i in range(9):                 # closed: smile-able mouth line
             u = i / 8.0
             x = mcx - hw + 2.0 * hw * u
             # smile > 0 dips the middle and lifts the corners (a "U")
-            y = mcy - (math.sin(u * math.pi) - 0.55) * smile * bl * 0.05
+            y = mcy - (math.sin(u * math.pi) - 0.55) * smile * curve
             pts.append((x, y))
         n.add(Shape(path=path_line(pts),
                     stroke=Stroke(paint=lighten(skin, -0.30),
-                                  width=bl * 0.024), transform=hm))
+                                  width=bl * (0.015 if kind == "long" else 0.024)),
+                    transform=hm))

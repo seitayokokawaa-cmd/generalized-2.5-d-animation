@@ -287,8 +287,13 @@ class CharProgram:
             st.facing = seg.dir
             return st
         if seg.mode in ("swim", "fly"):
-            from .gait_special import fly_pose, swim_pose
-            fn = swim_pose if seg.mode == "swim" else fly_pose
+            from .gait_special import fish_swim_pose, fly_pose, swim_pose
+            if self.rig.style.get("body") == "fish":
+                fn = fish_swim_pose
+            elif seg.mode == "swim":
+                fn = swim_pose
+            else:
+                fn = fly_pose
             st = fn(self.rig, dist, seg.total, t - seg.t0, seg.dir)
             st.pos = (seg.p0[0] + dist * seg.dir, lerp(seg.p0[1], seg.p1[1], u))
             st.facing = seg.dir

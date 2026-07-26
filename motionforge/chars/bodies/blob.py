@@ -111,14 +111,19 @@ class BlobRig(CharacterRig):
 
         # The blob frame: origin on the ground under the root, +X forward, +Y up.
         # Squash scales about the origin, so the base never leaves the ground.
-        n = Node(name=self.name)
-        b = n.child(transform=chain(
+        # `back` holds accents that must sit behind the body (a node's children
+        # always render after its own shapes, so behind-parts need their own
+        # node placed before the body's).
+        blob_m = chain(
             translation(0.0, lift), fk.base["body"], rotation(-90.0),
-            translation(0.0, -self.hip_height), rotation(sway), scaling(sx, sy)))
+            translation(0.0, -self.hip_height), rotation(sway), scaling(sx, sy))
+        n = Node(name=self.name)
+        back = n.child(transform=blob_m, name="back")
+        b = n.child(transform=blob_m, name="blob")
 
-        # ---- back-to-front inside the blob frame
-        self._tail(b, H, hw, skin, skin2)
-        self._ear(b, H, hw, far=True)
+        # ---- back-to-front
+        self._tail(back, H, hw, skin, skin2)
+        self._ear(back, H, hw, far=True)
         self._foot(b, -0.15 * H, H, lighten(skin, -0.18 + _FAR_SHADE))
         self._arm(b, H, hw, far=True)
 
@@ -188,11 +193,11 @@ class BlobRig(CharacterRig):
                     (x - 0.04 * s, 0.88 * H), (x + 0.05 * s, 0.89 * H),
                     (x + 0.02 * s, 0.88 * H + 0.15 * s)]), fill=skin2))
         elif kind == "floppy":
-            # both floppy ears hang over the top edge, so both draw over the body
+            # drape down along the sides of the head from a top pivot
             e = b.child(transform=chain(
-                translation(x + (0.05 * H if far else 0.02 * H), 0.93 * H),
-                rotation(28.0 if far else -24.0)))
-            e.add(Shape(path=path_ellipse(0.0, -0.11 * s, 0.062 * s, 0.15 * s),
+                translation(x * 1.35 + (0.04 * H if far else 0.02 * H), 0.94 * H),
+                rotation(52.0 if far else -58.0)))
+            e.add(Shape(path=path_ellipse(0.0, -0.15 * s, 0.062 * s, 0.17 * s),
                         fill=lighten(skin, shade - 0.14)))
         elif kind == "round":
             cy = 0.93 * H
@@ -210,39 +215,39 @@ class BlobRig(CharacterRig):
         elif kind == "horns":
             sgn = -1.0 if far else 1.0
             b.add(Shape(path=path_line([
-                (x, 0.90 * H), (x + sgn * 0.05 * s, 0.90 * H + 0.10 * s),
-                (x + sgn * 0.12 * s, 0.90 * H + 0.145 * s)]),
-                stroke=Stroke(paint=lighten(_HORN, shade), width=0.05 * s)))
+                (x, 0.88 * H), (x + sgn * 0.045 * s, 0.88 * H + 0.09 * s),
+                (x + sgn * 0.115 * s, 0.88 * H + 0.125 * s)]),
+                stroke=Stroke(paint=lighten(_HORN, shade), width=0.065 * s)))
 
     def _tail(self, b: Node, H: float, hw: float, skin: RGBA,
               skin2: RGBA) -> None:
         kind = self.acc["tail"]
         if kind is None:
             return
-        bx = -hw * 0.92
+        bx = -hw
         if kind == "nub":
-            b.add(Shape(path=path_circle(bx - 0.02 * H, 0.20 * H, 0.075 * H),
+            b.add(Shape(path=path_circle(bx - 0.035 * H, 0.20 * H, 0.075 * H),
                         fill=skin))
         elif kind == "bushy":
-            b.add(Shape(path=path_taper(bx + 0.04 * H, 0.20 * H,
-                                        bx - 0.24 * H, 0.34 * H,
+            b.add(Shape(path=path_taper(bx + 0.10 * H, 0.20 * H,
+                                        bx - 0.20 * H, 0.34 * H,
                                         0.09 * H, 0.115 * H), fill=skin))
-            b.add(Shape(path=path_circle(bx - 0.26 * H, 0.355 * H, 0.10 * H),
+            b.add(Shape(path=path_circle(bx - 0.22 * H, 0.355 * H, 0.10 * H),
                         fill=skin2))
         elif kind == "puff":
-            b.add(Shape(path=path_circle(bx - 0.015 * H, 0.22 * H, 0.08 * H),
+            b.add(Shape(path=path_circle(bx - 0.028 * H, 0.22 * H, 0.08 * H),
                         fill=lighten(skin, 0.25)))
         elif kind == "thin":
-            pts = [(bx + 0.02 * H, 0.12 * H)]
+            pts = [(bx + 0.05 * H, 0.12 * H)]
             for u in (0.25, 0.5, 0.75, 1.0):
-                pts.append((bx + 0.02 * H - u * 0.34 * H,
+                pts.append((bx + 0.05 * H - u * 0.36 * H,
                             0.12 * H + math.sin(u * 2.6) * 0.10 * H))
             b.add(Shape(path=path_line(pts),
                         stroke=Stroke(paint=lighten(skin, -0.1),
                                       width=0.028 * H)))
         elif kind == "curl":
-            r = 0.055 * H
-            b.add(Shape(path=[("M", bx + 0.03 * H, 0.30 * H),
-                              ("A", bx - 0.02 * H, 0.30 * H, r, -1.1, 3.6),
-                              ("A", bx - 0.05 * H, 0.27 * H, r * 0.55, 3.6, 7.4)],
-                        stroke=Stroke(paint=skin, width=0.035 * H)))
+            r = 0.07 * H
+            b.add(Shape(path=[("M", bx + 0.05 * H, 0.32 * H),
+                              ("A", bx - 0.045 * H, 0.30 * H, r, -1.1, 3.6),
+                              ("A", bx - 0.09 * H, 0.26 * H, r * 0.55, 3.6, 7.4)],
+                        stroke=Stroke(paint=skin, width=0.04 * H)))
