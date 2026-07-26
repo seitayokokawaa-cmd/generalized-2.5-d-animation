@@ -38,6 +38,7 @@ class Entity:
     """One placed instance in a scene."""
     placement: Placement
     palette: Dict[str, str]
+    obj_type: Optional[Any] = None       # compiled assets.builder.ObjectType
 
     @property
     def id(self) -> str:
@@ -50,8 +51,11 @@ class Entity:
     def position(self, t: float) -> Tuple[float, float]:
         return self.placement.at
 
+    def part_state(self, t: float) -> Dict[str, float]:
+        raw = self.placement.params.get("part_state")
+        return {str(k): float(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
     def node(self, t: float) -> Node:
-        """Placeholder visuals (replaced by assets/chars milestones)."""
         p = self.placement
         x, y = self.position(t)
         n = Node(transform=chain(
@@ -59,13 +63,15 @@ class Entity:
             scaling(-p.scale if p.flip or p.facing == "left" else p.scale, p.scale),
         ), name=p.id)
         if p.kind == "char":
+            # placeholder until the character milestone lands
             body = colors.parse(p.params.get("skin", "#c68642"), self.palette) \
                 if isinstance(p.params.get("skin"), str) else (0.35, 0.35, 0.4, 1.0)
             n.add(Shape(path=path_capsule(0, 0.45, 0, 1.25, 0.22), fill=body))
             n.add(Shape(path=path_circle(0, 1.55, 0.16), fill=body))
+        elif self.obj_type is not None:
+            n.children.append(self.obj_type.node(self.part_state(t), p.tint, self.palette))
         else:
-            tint = p.tint
-            col = colors.parse(tint, self.palette) if tint else (0.5, 0.45, 0.4, 1.0)
+            col = colors.parse(p.tint, self.palette) if p.tint else (0.5, 0.45, 0.4, 1.0)
             n.add(Shape(path=path_rect(-0.5, 0.0, 1.0, 1.0), fill=col))
         return n
 
@@ -85,14 +91,18 @@ class CompiledScene:
 
 class World:
     def __init__(self, production: Production):
+        from ..assets.catalog import Catalog
         self.production = production
         self.rng = MFRandom(production.meta.seed)
         self.width, self.height = production.meta.resolution
+        self.catalog = Catalog(production)
         self.scenes: List[CompiledScene] = []
         for sc in production.scenes:
             cs = CompiledScene(scene=sc, camera=compile_camera(sc))
             for p in sc.place:
-                cs.entities.append(Entity(placement=p, palette=production.palette))
+                obj_type = self.catalog.get(p.name) if p.kind == "obj" else None
+                cs.entities.append(Entity(placement=p, palette=production.palette,
+                                          obj_type=obj_type))
             self.scenes.append(cs)
 
     # ------------------------------------------------------------ per frame

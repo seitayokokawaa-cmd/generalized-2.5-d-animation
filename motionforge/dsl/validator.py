@@ -99,8 +99,7 @@ def validate(production: Production, report: Report) -> Report:
                 report.add("E202", f"scene '{scene.id}' > camera > follow",
                            f"camera follows '{target}', which is not placed in this scene",
                            did_you_mean(str(target), ids), cam.line)
-    # subsystem validators (assets, actions, audio) hook in as they are built
-    from . import validate_hooks
-    for hook in validate_hooks.HOOKS:
-        hook(production, report)
+    # subsystem validators (imported lazily to keep layering clean)
+    from ..assets.catalog import validate_assets
+    validate_assets(production, report)
     return report
