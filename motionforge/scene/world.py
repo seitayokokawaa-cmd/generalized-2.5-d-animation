@@ -40,6 +40,7 @@ class Entity:
     palette: Dict[str, str]
     obj_type: Optional[Any] = None       # compiled assets.builder.ObjectType
     rig: Optional[Any] = None            # chars.bodies.base.CharacterRig
+    program: Optional[Any] = None        # motion.program.CharProgram | ObjProgram
 
     @property
     def id(self) -> str:
@@ -50,27 +51,34 @@ class Entity:
         return self.placement.depth
 
     def position(self, t: float) -> Tuple[float, float]:
+        if self.program is not None:
+            return self.program.position(t)
         return self.placement.at
 
-    def part_state(self, t: float) -> Dict[str, float]:
-        raw = self.placement.params.get("part_state")
-        return {str(k): float(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
-
-    def node(self, t: float) -> Node:
+    def node(self, t: float, resolve_pos=None) -> Node:
         p = self.placement
+        if p.kind == "char" and self.rig is not None and self.program is not None:
+            st = self.program.state(t, resolve_pos)
+            flip = st.facing < 0
+            n = Node(transform=chain(
+                translation(st.pos[0], st.pos[1]),
+                scaling(-p.scale if flip else p.scale, p.scale),
+            ), name=p.id)
+            n.children.append(self.rig.node(st.pose))
+            return n
         x, y = self.position(t)
         n = Node(transform=chain(
             translation(x, y),
             scaling(-p.scale if p.flip or p.facing == "left" else p.scale, p.scale),
         ), name=p.id)
-        if p.kind == "char" and self.rig is not None:
-            n.children.append(self.rig.node(self.rig.rest_pose()))
-        elif p.kind == "char":
+        if p.kind == "char":
             body = (0.35, 0.35, 0.4, 1.0)
             n.add(Shape(path=path_capsule(0, 0.45, 0, 1.25, 0.22), fill=body))
             n.add(Shape(path=path_circle(0, 1.55, 0.16), fill=body))
         elif self.obj_type is not None:
-            n.children.append(self.obj_type.node(self.part_state(t), p.tint, self.palette))
+            part_state = self.program.part_state(t) if self.program else {}
+            n.opacity = self.program.opacity_at(t) if self.program else 1.0
+            n.children.append(self.obj_type.node(part_state, p.tint, self.palette))
         else:
             col = colors.parse(p.tint, self.palette) if p.tint else (0.5, 0.45, 0.4, 1.0)
             n.add(Shape(path=path_rect(-0.5, 0.0, 1.0, 1.0), fill=col))
@@ -99,19 +107,30 @@ class World:
         self.catalog = Catalog(production)
         self.scenes: List[CompiledScene] = []
         from ..chars.factory import make_rig
+        from ..motion.program import CharProgram, ObjProgram
         rig_cache: Dict[str, Any] = {}
         for sc in production.scenes:
             cs = CompiledScene(scene=sc, camera=compile_camera(sc))
+            by_subject: Dict[str, List[Any]] = {}
+            for d in sc.timeline:
+                if d.subject_kind in ("char", "obj"):
+                    by_subject.setdefault(d.subject, []).append(d)
             for p in sc.place:
                 obj_type = self.catalog.get(p.name) if p.kind == "obj" else None
                 rig = None
+                program = None
+                dirs = by_subject.get(p.id, [])
                 if p.kind == "char" and p.name in production.characters:
                     if p.name not in rig_cache:
                         rig_cache[p.name] = make_rig(production.characters[p.name],
                                                      production.palette)
                     rig = rig_cache[p.name]
+                    program = CharProgram(p, rig, dirs, sc, self.rng)
+                elif p.kind == "obj":
+                    program = ObjProgram(p, obj_type, dirs, sc)
                 cs.entities.append(Entity(placement=p, palette=production.palette,
-                                          obj_type=obj_type, rig=rig))
+                                          obj_type=obj_type, rig=rig,
+                                          program=program))
             self.scenes.append(cs)
 
     # ------------------------------------------------------------ per frame
@@ -171,11 +190,37 @@ class World:
         cs, t = self.scene_at(t_abs)
         cam = self.camera_state(cs, t)
         shapes = self.background_shapes(cs, cam, t)
+
+        def resolve_pos(eid: str, tt: float):
+            e = cs.entity(eid)
+            return e.position(tt) if e is not None else None
+
         order = sorted(cs.entities, key=lambda e: (-e.depth, e.placement.layer))
         for ent in order:
             view = view_matrix(cam, ent.depth, self.width, self.height)
-            flatten(ent.node(t), view, 1.0, shapes)
+            flatten(ent.node(t, resolve_pos), view, 1.0, shapes)
+
         from ..fx.captions import render_captions
         shapes.extend(render_captions(cs.scene.captions, t, self.width,
                                       self.height, self.production.palette))
+        shapes.extend(self._say_subtitles(cs, t))
         return shapes
+
+    def _say_subtitles(self, cs: CompiledScene, t: float) -> List[Shape]:
+        from ..dsl.ir import Caption
+        from ..fx.captions import render_caption
+        out: List[Shape] = []
+        row = 0
+        for ent in cs.entities:
+            prog = ent.program
+            if prog is None or not hasattr(prog, "say_captions"):
+                continue
+            for say in prog.say_captions():
+                if say.t0 <= t <= say.t1 and say.text.strip():
+                    cap = Caption(t=say.t0, until=say.t1, text=say.text,
+                                  style="subtitle",
+                                  params={"pos": [0.5, 0.90 - row * 0.075]})
+                    out.extend(render_caption(cap, t, self.width, self.height,
+                                              self.production.palette))
+                    row += 1
+        return out
