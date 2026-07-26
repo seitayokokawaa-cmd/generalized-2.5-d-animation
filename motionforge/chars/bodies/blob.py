@@ -60,9 +60,9 @@ class BlobRig(CharacterRig):
         self.dim = {
             "H": H, "seg": seg,
             "hip": 0.42 * H,              # root sits mid-blob at rest
-            "hw": 0.34 * H * build,       # body half-width
-            "foot_rx": 0.115 * H, "foot_ry": 0.062 * H,
-            "arm_r": 0.052 * H,
+            "hw": 0.37 * H * build,       # body half-width
+            "foot_rx": 0.125 * H, "foot_ry": 0.062 * H,
+            "arm_r": 0.055 * H,
             "face_x": 0.11 * H, "face_y": 0.63 * H, "face_r": 0.20 * H,
         }
         d = self.dim
@@ -118,17 +118,17 @@ class BlobRig(CharacterRig):
 
         # ---- back-to-front inside the blob frame
         self._tail(b, H, hw, skin, skin2)
-        self._ear(b, H, far=True)
-        self._foot(b, -0.13 * H, H, lighten(skin, -0.18 + _FAR_SHADE))
+        self._ear(b, H, hw, far=True)
+        self._foot(b, -0.15 * H, H, lighten(skin, -0.18 + _FAR_SHADE))
         self._arm(b, H, hw, far=True)
 
         # body: a big top ellipse over a wider rounded base = gumdrop
-        b.add(Shape(path=path_round_rect(-hw, 0.05 * H, 2 * hw, 0.47 * H,
-                                         0.14 * H), fill=skin))
-        b.add(Shape(path=path_ellipse(0.0, 0.56 * H, hw * 0.94, 0.44 * H),
+        b.add(Shape(path=path_round_rect(-hw * 1.02, 0.05 * H, 2.04 * hw,
+                                         0.47 * H, 0.15 * H), fill=skin))
+        b.add(Shape(path=path_ellipse(0.0, 0.56 * H, hw * 0.96, 0.44 * H),
                     fill=skin))
-        b.add(Shape(path=path_ellipse(0.10 * H, 0.33 * H, min(hw * 0.62, 0.24 * H),
-                                      0.25 * H), fill=skin2))
+        b.add(Shape(path=path_ellipse(0.09 * H, 0.30 * H, min(hw * 0.60, 0.25 * H),
+                                      0.22 * H), fill=skin2))
         if acc["sprout"]:
             b.add(Shape(path=[("M", 0.0, 0.98 * H),
                               ("C", 0.01 * H, 1.09 * H, 0.10 * H, 1.11 * H,
@@ -136,8 +136,8 @@ class BlobRig(CharacterRig):
                         stroke=Stroke(paint=lighten(skin, -0.2),
                                       width=0.022 * H)))
 
-        self._ear(b, H, far=False)
-        self._foot(b, 0.15 * H, H, lighten(skin, -0.18))
+        self._ear(b, H, hw, far=False)
+        self._foot(b, 0.17 * H, H, lighten(skin, -0.18))
         self._arm(b, H, hw, far=False)
 
         # rosy cheeks, then the full face (drawn over them where they overlap)
@@ -160,15 +160,16 @@ class BlobRig(CharacterRig):
                                       d["foot_ry"]), fill=col))
 
     def _arm(self, b: Node, H: float, hw: float, far: bool) -> None:
+        """Stubby mitt nubs angled downward from the sides."""
         skin = self.style["skin_rgba"]
         r = self.dim["arm_r"]
         sgn = -1.0 if far else 1.0
         col = lighten(skin, _FAR_SHADE) if far else skin
-        b.add(Shape(path=path_taper(sgn * hw * 0.62, 0.46 * H,
-                                    sgn * (hw + 0.075 * H), 0.35 * H,
-                                    r, r * 0.68), fill=col))
+        b.add(Shape(path=path_taper(sgn * hw * 0.52, 0.40 * H,
+                                    sgn * (hw + 0.055 * H), 0.26 * H,
+                                    r, r * 0.62), fill=col))
 
-    def _ear(self, b: Node, H: float, far: bool) -> None:
+    def _ear(self, b: Node, H: float, hw: float, far: bool) -> None:
         acc, st = self.acc, self.style
         kind = acc["ear"]
         if kind is None:
@@ -177,7 +178,7 @@ class BlobRig(CharacterRig):
         s = H * acc["ear_s"]
         shade = _FAR_SHADE if far else 0.0
         col = lighten(skin, shade)
-        x = -0.17 * H if far else 0.15 * H
+        x = -hw * 0.46 if far else hw * 0.42
         if kind == "pointy":
             b.add(Shape(path=path_polygon([
                 (x - 0.085 * s, 0.84 * H), (x + 0.085 * s, 0.86 * H),

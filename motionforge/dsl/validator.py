@@ -102,4 +102,7 @@ def validate(production: Production, report: Report) -> Report:
     # subsystem validators (imported lazily to keep layering clean)
     from ..assets.catalog import validate_assets
     validate_assets(production, report)
+    from ..motion.validate import validate_audio, validate_motion
+    validate_motion(production, report)
+    validate_audio(production, report)
     return report

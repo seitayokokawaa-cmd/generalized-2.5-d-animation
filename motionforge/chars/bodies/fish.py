@@ -40,7 +40,7 @@ _DEF = dict(body_f=0.72, depth=0.28, nose=0.62,
             eye_x=0.58, eye_y=0.34, eye_f=1.0,
             dorsal="round", dorsal_f=1.0,
             tail="fork", tail_h=0.15,
-            pect="round", pect_f=1.0,
+            pect="round", pect_f=1.0, pect_x=0.12, pect_y=-0.30, pect_ang=-140.0,
             gill="arc", mouth="small", smile0=0.25,
             anal=True, extras=())
 
@@ -57,8 +57,9 @@ SPECIES: Dict[str, dict] = {
                     extras=("teeth", "pale_belly")),
     "whale":   dict(_DEF, body_f=0.78, depth=0.31, nose=0.90,
                     eye_x=0.68, eye_y=0.04, eye_f=0.6,
-                    dorsal="bump", tail="fluke", tail_h=0.17,
-                    pect="round", pect_f=1.5, gill="none", mouth="long",
+                    dorsal="bump", tail="fluke", tail_h=0.18,
+                    pect="round", pect_f=1.1, pect_x=-0.04, pect_y=-0.62,
+                    pect_ang=-152.0, gill="none", mouth="long",
                     smile0=0.5, anal=False, extras=("blowhole", "grooves")),
     "salmon":  dict(_DEF, body_f=0.78, depth=0.23, nose=0.38,
                     eye_x=0.64, eye_y=0.32, eye_f=0.9,
@@ -163,14 +164,16 @@ class FishRig(CharacterRig):
         front, ry, nr = d["front"], d["ry"], d["nose_r"]
         m = pose.morphs
         hm = fk.base["head"]
-        n.add(Shape(path=path_taper(-front * 0.08, 0.0, front - nr, 0.0, ry, nr),
+        # start well behind the root so the cap edge never lines up with the
+        # body1 cap edge (coincident same-color edges leave an AA seam)
+        n.add(Shape(path=path_taper(-front * 0.22, 0.0, front - nr, 0.0, ry, nr),
                     fill=skin, transform=hm))
         # belly accent hugging the lower half, front body only
         n.add(Shape(path=path_ellipse(front * 0.10, -ry * 0.50,
                                       front * 0.78, ry * 0.46),
                     fill=belly, transform=hm))
         if "grooves" in sp["extras"]:      # whale throat pleats
-            g = lighten(belly, -0.09)
+            g = lighten(belly, -0.12)
             for yy in (0.42, 0.60, 0.78):
                 n.add(Shape(path=path_line([(front * 0.72, -ry * (yy - 0.06)),
                                             (front * 0.38, -ry * yy),
@@ -203,8 +206,8 @@ class FishRig(CharacterRig):
                 fill=col, transform=fk.base["body1"]))
         elif kind == "flowy":              # goldfish: soft swept sail
             fin = Node(transform=chain(fk.base["body1"],
-                                       translation(d["seg1"] * 0.18, -r0 * 0.72),
-                                       rotation(-38.0)))
+                                       translation(d["seg1"] * 0.12, -r0 * 0.82),
+                                       rotation(-42.0)))
             fin.add(Shape(path=path_ellipse(bl * 0.17, 0.0,
                                             bl * 0.22 * f, bl * 0.095 * f),
                           fill=col))
@@ -252,8 +255,9 @@ class FishRig(CharacterRig):
         skin = self.style["skin_rgba"]
         col = lighten(skin, -0.13 if far else -0.04)
         pl = d["bl"] * 0.20 * sp["pect_f"]
-        base = translation(d["front"] * (0.04 if far else 0.12), -d["ry"] * 0.30)
-        ang = -152.0 if far else -140.0    # points down-back
+        base = translation(d["front"] * (sp["pect_x"] - (0.08 if far else 0.0)),
+                           d["ry"] * sp["pect_y"])
+        ang = sp["pect_ang"] - (12.0 if far else 0.0)    # points down-back
         fin = Node(transform=chain(fk.base["head"], base, rotation(ang)))
         if sp["pect"] == "pointed":
             fin.add(Shape(path=path_polygon([
@@ -287,20 +291,22 @@ class FishRig(CharacterRig):
                 tn.children.append(p)
             tn.add(Shape(path=path_circle(x0, 0.0, rb * 1.1), fill=skin))
             return
+        rnd = 1.04
         if kind == "crescent":             # shark: big top lobe, swept
-            tt: Tuple[float, float] = (fl * 1.10, fh * 1.10)
-            bt: Tuple[float, float] = (fl * 0.72, -fh * 0.62)
-            notch = 0.42
-        elif kind == "fluke":              # whale: broad symmetric lobes
-            tt, bt, notch = (fl * 1.0, fh * 0.95), (fl * 1.0, -fh * 0.95), 0.30
+            tt: Tuple[float, float] = (fl * 1.15, fh * 1.15)
+            bt: Tuple[float, float] = (fl * 0.58, -fh * 0.78)
+            notch = 0.48
+        elif kind == "fluke":              # whale: broad round symmetric lobes
+            fl *= 1.3
+            tt, bt, notch, rnd = (fl, fh), (fl, -fh), 0.32, 1.18
         else:                              # fork (generic / salmon)
             tt, bt, notch = (fl * 1.0, fh * 0.85), (fl * 0.95, -fh * 0.80), 0.42
-        tn.add(Shape(path=self._caudal_path(x0, rb, fl, tt, bt, notch),
+        tn.add(Shape(path=self._caudal_path(x0, rb, fl, tt, bt, notch, rnd),
                      fill=lighten(skin, -0.05)))
 
     @staticmethod
     def _caudal_path(x0: float, rb: float, fl: float, tt, bt,
-                     notch: float) -> List[Seg]:
+                     notch: float, rnd: float = 1.04) -> List[Seg]:
         """Two-lobed fin outline; built in (back, up) coords, y then flipped."""
         pts: List[Seg] = []
 
@@ -313,14 +319,14 @@ class FishRig(CharacterRig):
         nx, nu = x0 + fl * notch, 0.0
         M(x0, rb * 0.9)
         C(x0 + tt[0] * 0.30, rb + (tt[1] - rb) * 0.38,
-          x0 + tt[0] * 0.78, tt[1] * 1.04,
+          x0 + tt[0] * 0.78, tt[1] * rnd,
           x0 + tt[0], tt[1])                              # top lobe tip
         C(x0 + tt[0] * 0.72, tt[1] * 0.52,
           nx + fl * 0.14, tt[1] * 0.14, nx, nu)           # into the notch
         C(nx + fl * 0.14, bt[1] * 0.14,
           x0 + bt[0] * 0.72, bt[1] * 0.52,
           x0 + bt[0], bt[1])                              # bottom lobe tip
-        C(x0 + bt[0] * 0.78, bt[1] * 1.04,
+        C(x0 + bt[0] * 0.78, bt[1] * rnd,
           x0 + bt[0] * 0.30, -rb + (bt[1] + rb) * 0.38,
           x0, -rb * 0.9)
         pts.append(("Z",))
@@ -391,8 +397,12 @@ class FishRig(CharacterRig):
         open_amt = max(0.0, min(1.0, float(m.get("mouth_open", 0.0))))
         smile = float(m.get("smile", 0.0)) + sp["smile0"]
         if open_amt > 0.05:
-            rx = hw * (0.75 + 0.25 * open_amt)
-            ryo = bl * (0.02 + (0.13 if kind != "long" else 0.10) * open_amt)
+            if kind == "long":             # keep the whale gape tucked in
+                mcx, rx = mcx - hw * 0.25, hw * 0.55
+                ryo = bl * (0.02 + 0.075 * open_amt)
+            else:
+                rx = hw * (0.75 + 0.25 * open_amt)
+                ryo = bl * (0.02 + 0.13 * open_amt)
             mn = Node(transform=hm, name="mouth")
             mn.add(Shape(path=path_ellipse(mcx, mcy - ryo * 0.4, rx, ryo),
                          fill=_MOUTH_DARK))
@@ -410,7 +420,8 @@ class FishRig(CharacterRig):
         for i in range(9):                 # closed: smile-able mouth line
             u = i / 8.0
             x = mcx - hw + 2.0 * hw * u
-            y = mcy + (math.sin(u * math.pi) - 0.55) * smile * bl * 0.05
+            # smile > 0 dips the middle and lifts the corners (a "U")
+            y = mcy - (math.sin(u * math.pi) - 0.55) * smile * bl * 0.05
             pts.append((x, y))
         n.add(Shape(path=path_line(pts),
                     stroke=Stroke(paint=lighten(skin, -0.30),
