@@ -51,6 +51,7 @@ class Shape:
     stroke: Optional[Stroke] = None
     transform: Mat = IDENTITY
     alpha: float = 1.0
+    operator: str = "over"      # over | multiply | screen | overlay | soft_light
 
 
 # ---------------------------------------------------------------- path makers

@@ -38,7 +38,8 @@ def flatten(node: Node, parent: Mat = IDENTITY, alpha: float = 1.0,
     a = alpha * node.opacity
     for s in node.shapes:
         out.append(Shape(path=s.path, fill=s.fill, stroke=s.stroke,
-                         transform=compose(m, s.transform), alpha=s.alpha * a))
+                         transform=compose(m, s.transform), alpha=s.alpha * a,
+                         operator=s.operator))
     for c in node.children:
         flatten(c, m, a, out)
     return out

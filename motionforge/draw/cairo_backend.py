@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 import cairocffi as cairo
 import numpy as np
@@ -14,6 +14,9 @@ _CAPS = {"butt": cairo.LINE_CAP_BUTT, "round": cairo.LINE_CAP_ROUND,
          "square": cairo.LINE_CAP_SQUARE}
 _JOINS = {"miter": cairo.LINE_JOIN_MITER, "round": cairo.LINE_JOIN_ROUND,
           "bevel": cairo.LINE_JOIN_BEVEL}
+_OPS = {"over": cairo.OPERATOR_OVER, "multiply": cairo.OPERATOR_MULTIPLY,
+        "screen": cairo.OPERATOR_SCREEN, "overlay": cairo.OPERATOR_OVERLAY,
+        "soft_light": cairo.OPERATOR_SOFT_LIGHT}
 
 
 class Raster:
@@ -77,6 +80,8 @@ class Raster:
                 continue
             m = s.transform
             c.save()
+            if s.operator != "over":
+                c.set_operator(_OPS.get(s.operator, cairo.OPERATOR_OVER))
             c.set_matrix(cairo.Matrix(m[0], m[1], m[2], m[3], m[4], m[5]))
             self._build_path(s.path)
             if s.fill is not None:
@@ -97,6 +102,22 @@ class Raster:
                 if st.dash:
                     c.set_dash([])
             c.restore()
+
+    def draw_with_alpha(self, shapes: List[Shape], alpha: float,
+                        clip_path: Optional[List[tuple]] = None) -> None:
+        """Draw shapes as one group composited at `alpha` (proper dissolve),
+        optionally clipped to a path (wipe/iris transitions)."""
+        c = self.ctx
+        c.save()
+        if clip_path is not None:
+            c.set_matrix(cairo.Matrix())
+            self._build_path(clip_path)
+            c.clip()
+        c.push_group()
+        self.draw(shapes)
+        c.pop_group_to_source()
+        c.paint_with_alpha(alpha)
+        c.restore()
 
     # ------------------------------------------------------------- output
 

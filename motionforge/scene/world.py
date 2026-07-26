@@ -19,14 +19,6 @@ from .camera import (CamState, CameraTrack, compile_camera, ground_screen_y,
                      horizon_y, view_matrix)
 from .graph import Node, flatten
 
-SKY_COLORS = {
-    "day": ("#7ec8f0", "#cdeafa"),
-    "dawn": ("#f7b267", "#fde8d0"),
-    "dusk": ("#a45fb8", "#f2b380"),
-    "night": ("#0d1330", "#28356b"),
-    "storm": ("#4a5766", "#8b98a6"),
-}
-
 GROUND_COLORS = {
     "grass": "#4a9440", "dirt": "#8b6b47", "sand": "#dbc98f", "stone": "#9a9a94",
     "snow": "#eef3f8", "water": "#3d7fb8", "road": "#5a5c60",
@@ -102,6 +94,9 @@ class CompiledScene:
     camera: CameraTrack
     entities: List[Entity] = field(default_factory=list)
     links: Optional[Any] = None          # motion.attach.SceneLinks
+    sky: Optional[Any] = None            # fx.sky.SkyDome
+    weather: Optional[Any] = None        # fx.weather.WeatherField
+    moods: List[Tuple[float, str]] = field(default_factory=list)
 
     def entity(self, eid: str) -> Optional[Entity]:
         for e in self.entities:
@@ -164,6 +159,46 @@ class World:
                                           program=program))
             from ..motion.attach import SceneLinks
             cs.links = SceneLinks({e.id: e for e in cs.entities})
+
+            # sky / weather / mood, including world-verb changes over time
+            from ..fx.sky import SkyDome
+            from ..fx.weather import WeatherField
+            bg = sc.background
+            sky_changes, weather_changes = [], []
+            base_weather = bg.get("weather", "none")
+            if isinstance(base_weather, dict):
+                bw = (str(base_weather.get("kind", "rain")),
+                      float(base_weather.get("intensity", 0.7)))
+            else:
+                bw = (str(base_weather), 0.7 if base_weather not in (None, "none") else 0.0)
+            base_mood = str(bg.get("mood", "") or "")
+            if not base_mood:
+                sky_kind = str(bg.get("sky", "day"))
+                base_mood = {"night": "night", "storm": "storm",
+                             "dusk": "dusk"}.get(sky_kind, "neutral")
+            cs.moods = [(-1e9, base_mood)]
+            for d in sc.timeline:
+                if d.subject_kind != "world":
+                    continue
+                over = float(d.params.get("over", 1.5) or 0.0)
+                if d.verb == "sky":
+                    sky_changes.append((d.t, str(d.params.get("sky")), over))
+                elif d.verb == "weather":
+                    wv = d.params.get("weather")
+                    if isinstance(wv, dict):
+                        kind = str(wv.get("kind", "rain"))
+                        inten = float(wv.get("intensity", 0.7))
+                    else:
+                        kind = str(wv)
+                        inten = 0.0 if kind == "none" else 0.7
+                    inten = float(d.params.get("intensity", inten))
+                    weather_changes.append((d.t, kind, inten, over))
+                elif d.verb == "mood":
+                    cs.moods.append((d.t, str(d.params.get("mood", "neutral"))))
+            cs.moods.sort()
+            cs.sky = SkyDome(str(bg.get("sky", "day")), sky_changes, self.rng,
+                             sc.id, production.palette)
+            cs.weather = WeatherField(bw, weather_changes, self.rng, sc.id)
             self.scenes.append(cs)
 
     # ------------------------------------------------------------ per frame
@@ -188,19 +223,10 @@ class World:
                           t: float) -> List[Shape]:
         w, h = self.width, self.height
         bg = cs.scene.background
-        out: List[Shape] = []
-        sky = bg.get("sky", "day")
-        if isinstance(sky, str) and sky in SKY_COLORS:
-            top, bottom = (colors.parse(c) for c in SKY_COLORS[sky])
-        else:
-            try:
-                top = bottom = colors.parse(sky, self.production.palette)
-            except ValueError:
-                top, bottom = (colors.parse(c) for c in SKY_COLORS["day"])
         hy = horizon_y(cam, h)
-        out.append(Shape(path=path_rect(0, 0, w, max(hy, 0) + 2), fill=Gradient(
-            kind="linear", stops=[(0.0, top), (1.0, bottom)], p0=(0, 0), p1=(0, max(hy, 1)))))
-        # ground: from the horizon down, shaded darker when nearer
+        out: List[Shape] = list(cs.sky.shapes(t, cam.x, w, h, hy)) if cs.sky else []
+        _top, bottom, _sun, _moon, _stars = cs.sky.params_at(t) if cs.sky else \
+            ((0, 0, 0, 1), (0.7, 0.85, 0.95, 1.0), None, False, 0.0)
         ground = bg.get("ground", "grass")
         gcolor = None
         if isinstance(ground, dict):
@@ -218,10 +244,72 @@ class World:
                 p0=(0, hy), p1=(0, h))))
         return out
 
-    def frame_shapes(self, t_abs: float) -> List[Shape]:
+    def mood_at(self, cs: CompiledScene, t: float) -> str:
+        mood = "neutral"
+        for (mt, m) in cs.moods:
+            if mt <= t:
+                mood = m
+        return mood
+
+    def frame_plan(self, t_abs: float) -> Dict[str, Any]:
+        """Everything the frame compositor needs: main shapes, UI shapes,
+        and the active transition (if any)."""
         cs, t = self.scene_at(t_abs)
+        main = self.frame_shapes(t_abs)
+        ui = self.ui_shapes(cs, t)
+        plan: Dict[str, Any] = {"main": main, "ui": ui, "transition": None}
+        tr = cs.scene.transition_in
+        idx = self.scenes.index(cs)
+        if tr and idx >= 0:
+            kind = str(tr.get("type", "fade"))
+            dur = float(tr.get("dur", 1.0))
+            if t < dur and kind != "cut":
+                u = t / max(dur, 1e-9)
+                prev_shapes = None
+                if idx > 0 and kind in ("dissolve", "wipe", "iris"):
+                    prev = self.scenes[idx - 1]
+                    prev_shapes = self._scene_frame(prev, prev.scene.duration - 1e-3)
+                plan["transition"] = (kind, u, prev_shapes)
+        tr_out = cs.scene.transition_out
+        if tr_out:
+            kind = str(tr_out.get("type", "fade"))
+            dur = float(tr_out.get("dur", 1.0))
+            remaining = cs.scene.duration - t
+            if remaining < dur and kind == "fade":
+                plan["fade_out"] = 1.0 - remaining / max(dur, 1e-9)
+        return plan
+
+    def _scene_frame(self, cs: CompiledScene, t: float) -> List[Shape]:
         cam = self.camera_state(cs, t)
         shapes = self.background_shapes(cs, cam, t)
+        shapes.extend(self._entity_shapes(cs, cam, t))
+        shapes.extend(self._fx_shapes(cs, cam, t))
+        return shapes
+
+    def ui_shapes(self, cs: CompiledScene, t: float) -> List[Shape]:
+        from ..fx.captions import render_captions
+        out = render_captions(cs.scene.captions, t, self.width,
+                              self.height, self.production.palette)
+        out.extend(self._say_subtitles(cs, t))
+        return out
+
+    def _fx_shapes(self, cs: CompiledScene, cam: CamState, t: float) -> List[Shape]:
+        from ..fx.grade import grade_shapes
+        out: List[Shape] = []
+        if cs.weather is not None:
+            out.extend(cs.weather.shapes(t, cam.x, cam.zoom,
+                                         self.width, self.height))
+        out.extend(grade_shapes(self.mood_at(cs, t), self.width, self.height))
+        return out
+
+    def frame_shapes(self, t_abs: float) -> List[Shape]:
+        """Scene visuals (background, entities, weather, grade) — no UI."""
+        cs, t = self.scene_at(t_abs)
+        return self._scene_frame(cs, t)
+
+    def _entity_shapes(self, cs: CompiledScene, cam: CamState,
+                       t: float) -> List[Shape]:
+        shapes: List[Shape] = []
 
         def resolve_pos(eid: str, tt: float):
             e = cs.entity(eid)
@@ -277,11 +365,6 @@ class World:
                     node = Node(transform=m_held)
                     node.children.append(obj.visual_node(t))
                     flatten(node, view, 1.0, shapes)
-
-        from ..fx.captions import render_captions
-        shapes.extend(render_captions(cs.scene.captions, t, self.width,
-                                      self.height, self.production.palette))
-        shapes.extend(self._say_subtitles(cs, t))
         return shapes
 
     def _say_subtitles(self, cs: CompiledScene, t: float) -> List[Shape]:
